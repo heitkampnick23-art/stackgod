@@ -15,3 +15,7 @@ bucket_name = "stackgod-apps"
 [[kv_namespaces]]
 binding = "APP_DATA"
 id = "69d61efe60e149cbad76e7acc25970fa"
+
+[[kv_namespaces]]
+binding = "APP_HOSTS"
+id = "c38c6cef8be149e6b99088570dee838d"

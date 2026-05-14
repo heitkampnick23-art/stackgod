@@ -3,6 +3,7 @@ export interface Env {
   ARTIFACTS: R2Bucket;
   APPS: R2Bucket;
   SESSIONS: KVNamespace;
+  APP_HOSTS: KVNamespace;
   BUILD_QUEUE: Queue;
   APP_URL: string;
   API_URL: string;

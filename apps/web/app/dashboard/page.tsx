@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-interface App { id: string; slug: string; name: string; status: string; }
+interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; }
 interface Usage { messages: number; cost: number; }
 interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; error: string | null; queued_at: number; }
 
@@ -92,19 +92,7 @@ export default function Dashboard() {
       <div className="mt-4 grid md:grid-cols-3 gap-4">
         {apps.length === 0 && <div className="card text-white/50">No apps yet. <Link href="/build" className="text-flame">Start building →</Link></div>}
         {apps.map((a) => (
-          <div key={a.id} className="card">
-            <Link href={`/build?app=${a.id}`} className="block">
-              <div className="font-semibold">{a.name}</div>
-              <div className="text-xs text-white/50 mt-1">{a.slug}.stakgod.app</div>
-              <div className="mt-3 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{a.status}</div>
-            </Link>
-            <button
-              onClick={() => shipIos(a.id)}
-              disabled={shipping === a.id}
-              className="btn-ghost text-xs mt-3 w-full disabled:opacity-50">
-              {shipping === a.id ? 'Queueing…' : '🚀 Ship to TestFlight'}
-            </button>
-          </div>
+          <AppCard key={a.id} app={a} onShip={() => shipIos(a.id)} shipping={shipping === a.id} onChange={() => fetch(`${API}/apps`, { credentials: 'include' }).then(r => r.json()).then(d => setApps(d.apps))} />
         ))}
       </div>
 
@@ -140,4 +128,73 @@ function BuildStatus({ status }: { status: string }) {
               status === 'failed'    ? 'text-red-400' :
               status === 'running' || status === 'dispatched' ? 'text-amber-400' : 'text-white/60';
   return <span className={`font-semibold text-xs uppercase ${cls}`}>{status}</span>;
+}
+
+function AppCard({ app, onShip, shipping, onChange }: { app: App; onShip: () => void; shipping: boolean; onChange: () => void }) {
+  const [openDomain, setOpenDomain] = useState(false);
+  const [domain, setDomain] = useState(app.custom_domain ?? '');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string>('');
+
+  async function attach() {
+    setBusy(true); setMsg('');
+    const r = await fetch(`${API}/apps/${app.id}/domain`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ domain: domain.trim() }),
+    });
+    setBusy(false);
+    const j = await r.json();
+    if (!r.ok) {
+      if (j.upgrade_url) { if (confirm(`${j.error}. Upgrade now?`)) location.href = j.upgrade_url; return; }
+      setMsg(j.error ?? 'failed'); return;
+    }
+    setMsg(`✓ Saved. CNAME ${j.domain} → ${j.cname_target} (proxied) and it's live.`);
+    onChange();
+  }
+
+  async function detach() {
+    if (!confirm(`Detach ${app.custom_domain}?`)) return;
+    setBusy(true);
+    await fetch(`${API}/apps/${app.id}/domain`, { method: 'DELETE', credentials: 'include' });
+    setBusy(false);
+    setDomain(''); setMsg('');
+    onChange();
+  }
+
+  const liveUrl = app.custom_domain ? `https://${app.custom_domain}/` : `https://apps.stakgod.com/${app.slug}/`;
+
+  return (
+    <div className="card">
+      <Link href={`/build?app=${app.id}`} className="block">
+        <div className="font-semibold">{app.name}</div>
+        <div className="text-xs text-white/50 mt-1 truncate">{liveUrl.replace(/^https?:\/\//, '')}</div>
+        <div className="mt-3 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{app.status}</div>
+      </Link>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <a href={liveUrl} target="_blank" rel="noreferrer" className="btn-ghost text-xs !py-2">Open ↗</a>
+        <button onClick={() => setOpenDomain((v) => !v)} className="btn-ghost text-xs !py-2">
+          {app.custom_domain ? '🌐 ' + app.custom_domain : '🌐 Custom domain'}
+        </button>
+      </div>
+      <button onClick={onShip} disabled={shipping} className="btn-ghost text-xs mt-2 w-full disabled:opacity-50">
+        {shipping ? 'Queueing…' : '🚀 Ship to TestFlight'}
+      </button>
+
+      {openDomain && (
+        <div className="mt-3 pt-3 border-t border-white/10 text-xs">
+          <input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="myapp.com"
+            className="w-full rounded bg-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-flame" />
+          <div className="text-white/50 mt-2">Add a CNAME at your DNS provider: <code className="text-white/70">{(domain.trim() || 'yourdomain') + ' → apps.stakgod.com'}</code> (proxied through Cloudflare).</div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={attach} disabled={busy || !domain.trim()} className="btn-primary text-xs !py-2 flex-1 disabled:opacity-50">
+              {busy ? '…' : (app.custom_domain ? 'Update' : 'Attach')}
+            </button>
+            {app.custom_domain && <button onClick={detach} disabled={busy} className="btn-ghost text-xs !py-2 disabled:opacity-50">Detach</button>}
+          </div>
+          {msg && <div className="mt-2 text-white/70">{msg}</div>}
+        </div>
+      )}
+    </div>
+  );
 }

@@ -2,7 +2,7 @@
 // Each app gets a built-in KV-backed mini backend reachable at /{slug}/__api__/db.
 // We auto-inject `window.sg = { db: { get, put, list, del } }` into every served HTML.
 
-interface Env { APPS: R2Bucket; APP_DATA: KVNamespace; }
+interface Env { APPS: R2Bucket; APP_DATA: KVNamespace; APP_HOSTS: KVNamespace; }
 
 const STATIC_HEADERS: Record<string, string> = {
   'cache-control': 'public, max-age=300',
@@ -28,15 +28,30 @@ const MAX_KEYS_PER_APP = 5_000;          // soft anti-abuse cap
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    const host = (req.headers.get('host') ?? url.hostname).toLowerCase();
     const segs = url.pathname.split('/').filter(Boolean);
-    if (segs.length === 0) return landing();
-    const slug = segs[0];
-    if (!/^[a-z0-9-]{1,64}$/.test(slug)) return text('bad slug', 400);
+
+    // Two routing modes:
+    //   apps.stakgod.com/{slug}/...   (default subdomain — slug from path)
+    //   custom.host.com/...           (attached domain — slug from KV lookup)
+    let slug: string | undefined;
+    let pathSegs: string[];
+    if (host === 'apps.stakgod.com') {
+      if (segs.length === 0) return landing();
+      slug = segs[0];
+      pathSegs = segs.slice(1);
+    } else {
+      const mapped = await env.APP_HOSTS.get(`host:${host}`);
+      if (!mapped) return text('app not found for this host', 404);
+      slug = mapped;
+      pathSegs = segs;
+    }
+    if (!slug || !/^[a-z0-9-]{1,64}$/.test(slug)) return text('bad slug', 400);
 
     // Per-app mini backend.
-    if (segs[1] === '__api__') return handleApi(req, env, slug, segs.slice(2));
+    if (pathSegs[0] === '__api__') return handleApi(req, env, slug, pathSegs.slice(1));
 
-    let path = segs.slice(1).join('/');
+    let path = pathSegs.join('/');
     if (path === '' || path.endsWith('/')) path += 'index.html';
     const key = `apps/${slug}/${path}`;
 
