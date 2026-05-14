@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col">
-        <header className="sticky top-0 z-50 backdrop-blur bg-ink/70 border-b border-white/5">
+        <header className="sticky top-0 z-50 backdrop-blur-xl backdrop-saturate-150 bg-ink/50 border-b border-white/10">
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
             <Link href="/" className="font-display text-xl tracking-wider"><span className="text-gold">STACK</span>GOD</Link>
             <nav className="hidden md:flex gap-8 text-sm text-white/70">
@@ -28,7 +28,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </div>
         </header>
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-white/5 mt-24">
+        <footer className="border-t border-white/10 mt-24 backdrop-blur-xl bg-ink/40">
           <div className="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-4 gap-8 text-sm text-white/60">
             <div>
               <div className="font-display text-lg text-white"><span className="text-gold">STACK</span>GOD</div>
