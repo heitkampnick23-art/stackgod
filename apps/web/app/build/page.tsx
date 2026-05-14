@@ -9,6 +9,23 @@ interface Msg { role: 'user' | 'assistant'; text: string; }
 function BuildInner() {
   const params = useSearchParams();
   const initialAppId = params.get('app');
+  const forkSlug = params.get('fork');
+
+  // Handle ?fork=slug — call /builder/fork then redirect to ?app=newId.
+  useEffect(() => {
+    if (!forkSlug || initialAppId) return;
+    (async () => {
+      const r = await fetch(`${API}/builder/fork`, {
+        method: 'POST', credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ template: forkSlug }),
+      });
+      if (r.status === 401) { location.href = `/login?next=/build?fork=${forkSlug}`; return; }
+      if (!r.ok) return;
+      const j = await r.json();
+      location.replace(`/build?app=${j.id}`);
+    })();
+  }, [forkSlug, initialAppId]);
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');

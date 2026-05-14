@@ -63,7 +63,8 @@ async function r2Response(obj: R2ObjectBody, path: string, slug: string): Promis
   return new Response(obj.body, { status: 200, headers });
 }
 
-// Inject a tiny SDK so generated apps can call our backend with no setup.
+// Inject a tiny SDK so generated apps can call our backend with no setup,
+// plus a "Built with STAKGOD · Remix" badge for the viral loop.
 function injectSgSdk(html: string, slug: string): string {
   const sdk = `<script>window.sg=(function(){const B='/${slug}/__api__';return {db:{
 async get(k){const r=await fetch(B+'/db?key='+encodeURIComponent(k));if(r.status===404)return null;if(!r.ok)throw new Error('sg.db.get '+r.status);return r.json();},
@@ -71,9 +72,21 @@ async put(k,v){const r=await fetch(B+'/db?key='+encodeURIComponent(k),{method:'P
 async del(k){await fetch(B+'/db?key='+encodeURIComponent(k),{method:'DELETE'});},
 async list(prefix){const r=await fetch(B+'/db/list?prefix='+encodeURIComponent(prefix||''));if(!r.ok)throw new Error('sg.db.list '+r.status);return r.json();}
 }};})();</script>`;
-  if (html.includes('</head>')) return html.replace('</head>', sdk + '</head>');
-  if (html.includes('<body>')) return html.replace('<body>', '<body>' + sdk);
-  return sdk + html;
+
+  const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);text-decoration:none">
+<a href="https://stakgod.com/?utm_source=app&amp;utm_medium=badge&amp;utm_campaign=${slug}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:4px"><span style="color:#d4af37;font-weight:700">STAK</span><span style="font-weight:700">GOD</span></a>
+<span style="opacity:0.4">·</span>
+<a href="https://stakgod.com/build?fork=${slug}" target="_blank" rel="noreferrer" style="color:#ff5b1f;text-decoration:none;font-weight:600">Remix</a>
+</div>`;
+
+  let out = html;
+  if (out.includes('</head>')) out = out.replace('</head>', sdk + '</head>');
+  else if (out.includes('<body>')) out = out.replace('<body>', '<body>' + sdk);
+  else out = sdk + out;
+
+  if (out.includes('</body>')) out = out.replace('</body>', badge + '</body>');
+  else out = out + badge;
+  return out;
 }
 
 async function handleApi(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
