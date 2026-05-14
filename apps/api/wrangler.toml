@@ -11,7 +11,7 @@ routes = [
 [[d1_databases]]
 binding = "DB"
 database_name = "stackgod"
-database_id = "PLACEHOLDER_AFTER_CREATE"
+database_id = "91355169-4ad4-4825-a468-9c830f9dae27"
 
 [[r2_buckets]]
 binding = "ARTIFACTS"
@@ -19,15 +19,16 @@ bucket_name = "stackgod-artifacts"
 
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "PLACEHOLDER_AFTER_CREATE"
+id = "749eec723bcc4db1892ede8c1a4b401b"
 
 [[queues.producers]]
 binding = "BUILD_QUEUE"
 queue = "stackgod-builds"
 
-[[queues.consumers]]
-queue = "stackgod-builds"
-max_batch_size = 5
+# Consumer wired in a separate Worker once iOS/Android build handlers land.
+# [[queues.consumers]]
+# queue = "stackgod-builds"
+# max_batch_size = 5
 
 [vars]
 APP_URL = "https://stakgod.com"
