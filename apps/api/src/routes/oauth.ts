@@ -1,11 +1,9 @@
-// Google + Apple Sign In. Both flows: redirect to provider, callback handles
-// token exchange / JWT verify, then mints a Stackgod session cookie.
-//
-// Credentials are read from env. If a provider's creds aren't set, the
-// /auth/providers endpoint reports it disabled and the UI hides the button.
+// Google + Apple Sign In. Both flows: redirect to provider, callback verifies
+// the OIDC id_token signature against the issuer's JWKS, then mints a session.
 
 import { Hono } from 'hono';
 import type { Env, Variables } from '../types';
+import { verifyIdToken, type IdTokenClaims } from '../lib/jwt';
 
 export const oauth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -57,10 +55,22 @@ oauth.get('/google/callback', async (c) => {
   });
   if (!tokenRes.ok) return c.text(`google token exchange failed: ${await tokenRes.text()}`, 502);
   const { id_token } = await tokenRes.json<{ id_token: string }>();
-  const claims = decodeIdToken(id_token);
-  if (!claims?.email) return c.text('no email in token', 400);
 
-  const { id, sessionToken } = await upsertUserAndSession(c.env, {
+  let claims: IdTokenClaims;
+  try {
+    claims = await verifyIdToken({
+      jwt: id_token,
+      jwksUrl: 'https://www.googleapis.com/oauth2/v3/certs',
+      expectedIss: ['https://accounts.google.com', 'accounts.google.com'],
+      expectedAud: c.env.GOOGLE_CLIENT_ID,
+      kvCache: c.env.SESSIONS,
+    });
+  } catch (e) {
+    return c.text(`google id_token verify failed: ${e}`, 401);
+  }
+  if (!claims.email) return c.text('no email in token', 400);
+
+  const { sessionToken } = await upsertUserAndSession(c.env, {
     email: claims.email,
     name: claims.name ?? null,
     avatar_url: claims.picture ?? null,
@@ -98,9 +108,21 @@ oauth.post('/apple/callback', async (c) => {
   if (!(await c.env.SESSIONS.get(`oauth_state:${state}`))) return c.text('bad state', 400);
   await c.env.SESSIONS.delete(`oauth_state:${state}`);
 
-  const claims = decodeIdToken(idToken);
-  if (!claims?.email) return c.text('no email in id_token', 400);
+  let claims: IdTokenClaims;
+  try {
+    claims = await verifyIdToken({
+      jwt: idToken,
+      jwksUrl: 'https://appleid.apple.com/auth/keys',
+      expectedIss: 'https://appleid.apple.com',
+      expectedAud: c.env.APPLE_CLIENT_ID,
+      kvCache: c.env.SESSIONS,
+    });
+  } catch (e) {
+    return c.text(`apple id_token verify failed: ${e}`, 401);
+  }
+  if (!claims.email) return c.text('no email in id_token', 400);
 
+  // Apple includes name only on first sign-in, as a JSON `user` form field.
   const userJson = form.get('user') as string | null;
   let displayName: string | null = null;
   if (userJson) {
@@ -110,7 +132,7 @@ oauth.post('/apple/callback', async (c) => {
     } catch {}
   }
 
-  const { id, sessionToken } = await upsertUserAndSession(c.env, {
+  const { sessionToken } = await upsertUserAndSession(c.env, {
     email: claims.email,
     name: displayName,
     avatar_url: null,
@@ -153,20 +175,4 @@ async function upsertUserAndSession(env: Env, u: UpsertInput): Promise<{ id: str
   await env.DB.prepare(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`)
     .bind(sessionToken, id, expires).run();
   return { id, sessionToken };
-}
-
-interface IdTokenClaims { sub: string; email?: string; name?: string; picture?: string; }
-
-function decodeIdToken(jwt: string): IdTokenClaims | null {
-  // Skip signature verification for v0; both providers send over HTTPS direct from us.
-  // Production: verify against Google JWKS / Apple JWKS.
-  const parts = jwt.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const b = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b + '='.repeat((4 - (b.length % 4)) % 4);
-    return JSON.parse(atob(padded));
-  } catch {
-    return null;
-  }
 }
