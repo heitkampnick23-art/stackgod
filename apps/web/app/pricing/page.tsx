@@ -62,6 +62,6 @@ async function upgrade(plan: string, cycle: Cycle) {
     body: JSON.stringify({ plan, cycle }),
   });
   if (r.status === 401) { location.href = `/login?next=/pricing`; return; }
-  const { url } = await r.json<{ url: string }>();
+  const { url } = await r.json();
   if (url) location.href = url;
 }

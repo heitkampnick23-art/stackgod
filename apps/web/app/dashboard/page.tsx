@@ -17,7 +17,7 @@ export default function Dashboard() {
 
   async function connectStripe() {
     const r = await fetch('https://api.stakgod.com/billing/connect/onboard', { method: 'POST', credentials: 'include' });
-    const { url } = await r.json<{ url: string }>();
+    const { url } = await r.json();
     location.href = url;
   }
 

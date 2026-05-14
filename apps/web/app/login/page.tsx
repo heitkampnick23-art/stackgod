@@ -13,7 +13,7 @@ export default function Login() {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email }),
     });
-    if (r.ok) setSent(true); else setErr((await r.json<{ error: string }>()).error);
+    if (r.ok) setSent(true); else setErr((await r.json()).error);
   }
 
   return (

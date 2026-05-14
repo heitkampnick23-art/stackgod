@@ -19,7 +19,7 @@ export default function Build() {
     if (appId) return appId;
     const r = await fetch('https://api.stakgod.com/apps', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Untitled' }) });
     if (r.status === 401) { location.href = '/login?next=/build'; throw new Error('auth'); }
-    const { id } = await r.json<{ id: string }>();
+    const { id } = await r.json();
     setAppId(id);
     return id;
   }
@@ -38,7 +38,7 @@ export default function Build() {
         body: JSON.stringify({ app_id: id, message: text, intent: 'generate' }),
       });
       if (r.status === 402) {
-        const j = await r.json<{ message: string; upgrade_url: string }>();
+        const j = await r.json();
         setMsgs((m) => [...m.slice(0, -1), { role: 'assistant', text: `${j.message}\n\n→ Upgrade: ${j.upgrade_url}` }]);
         return;
       }
