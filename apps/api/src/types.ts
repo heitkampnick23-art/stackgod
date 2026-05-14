@@ -17,6 +17,7 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   RESEND_API_KEY: string;
   SESSION_SECRET: string;
+  ENCRYPTION_KEY: string;       // base64(32 bytes) for AES-GCM at-rest encryption
 }
 
 export interface User {

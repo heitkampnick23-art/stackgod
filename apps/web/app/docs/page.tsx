@@ -39,6 +39,15 @@ export default function Docs() {
         </tbody>
       </table>
 
+      <h2 className="font-display text-3xl mt-16">Bring your own developer accounts</h2>
+      <p className="mt-3 text-white/70">
+        Apple Guideline 4.2.6 requires apps to publish under their owner's account, so Stackgod never publishes
+        on your behalf. To ship to TestFlight or the App Store, connect your own Apple Developer account
+        (<b>$99/yr</b> to Apple). For Google Play, connect your Play Console account (<b>$25 one-time</b> to Google).
+        We automate every upload using your keys — your apps, your name on the listing, your revenue.
+        Connect from <Link href="/dashboard" className="text-flame">your dashboard</Link>. Keys are encrypted at rest with AES-256-GCM.
+      </p>
+
       <h2 className="font-display text-3xl mt-16">Help</h2>
       <p className="mt-3 text-white/70">Email <a href="mailto:hello@stakgod.com" className="text-flame">hello@stakgod.com</a> for anything.</p>
     </div>

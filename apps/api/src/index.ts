@@ -8,6 +8,7 @@ import { builder } from './routes/builder';
 import { domains } from './routes/domains';
 import { apps } from './routes/apps';
 import { mobile } from './routes/mobile';
+import { connect } from './routes/connect';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -33,5 +34,6 @@ app.route('/builder', builder);
 app.route('/domains', domains);
 app.route('/apps', apps);
 app.route('/mobile', mobile);
+app.route('/connect', connect);
 
 export default app;

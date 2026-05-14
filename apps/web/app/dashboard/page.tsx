@@ -45,6 +45,19 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <h2 className="font-display text-2xl mt-12">Ship to stores</h2>
+      <p className="text-sm text-white/50 mt-1">Apps publish under your own developer accounts (Apple Guideline 4.2.6). Bring your keys, we automate every ship.</p>
+      <div className="mt-4 grid md:grid-cols-2 gap-4">
+        <Link href="/dashboard/connect-apple" className="card hover:border-flame/40 transition block">
+          <div className="font-semibold">Connect Apple Developer</div>
+          <div className="text-sm text-white/60 mt-1">Required for TestFlight + App Store ship. ~10 min, $99/yr to Apple.</div>
+        </Link>
+        <Link href="/dashboard/connect-google" className="card hover:border-flame/40 transition block">
+          <div className="font-semibold">Connect Google Play</div>
+          <div className="text-sm text-white/60 mt-1">Required for Play submit. ~10 min, $25 one-time to Google.</div>
+        </Link>
+      </div>
+
       <h2 className="font-display text-2xl mt-12">Your apps</h2>
       <div className="mt-4 grid md:grid-cols-3 gap-4">
         {apps.length === 0 && <div className="card text-white/50">No apps yet. <Link href="/build" className="text-flame">Start building →</Link></div>}
