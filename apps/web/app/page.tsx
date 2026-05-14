@@ -13,7 +13,7 @@ export default function Home() {
             Speak it. <span className="text-gold">Ship it.</span> Own it.
           </h1>
           <p className="mt-6 text-lg md:text-xl text-white/80 max-w-2xl mx-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.6)]">
-            Describe your app. Stackgod writes it, hosts it, sells subscriptions for you, and ships it to the App Store and Google Play — all in one chat.
+            Describe your app. Stakgod writes it, hosts it, sells subscriptions for you, and ships it to the App Store and Google Play — all in one chat.
           </p>
           <div className="mt-10 flex gap-4 justify-center">
             <Link href="/build" className="btn-primary text-lg px-8 py-4">Start building free</Link>
@@ -45,7 +45,7 @@ export default function Home() {
 
       <section className="max-w-6xl mx-auto px-6 py-20 text-center">
         <h2 className="font-display text-3xl md:text-5xl">Be in the App Store by Friday.</h2>
-        <p className="mt-3 text-white/60">Stackgod generates a real native iOS + Android app from your chat and uploads it to TestFlight and Play.</p>
+        <p className="mt-3 text-white/60">Stakgod generates a real native iOS + Android app from your chat and uploads it to TestFlight and Play.</p>
         <Link href="/build" className="btn-primary mt-8">Start free →</Link>
       </section>
 
@@ -58,7 +58,7 @@ export default function Home() {
               <h3 className="font-display text-3xl mt-2">Fund a founder. <span className="text-gold">$99 = 1 app shipped.</span></h3>
               <p className="mt-2 text-white/70">
                 Apple charges $99/yr. For builders who can&apos;t pay it, that&apos;s the wall. Tip here and we cover their fee — they ship,
-                they earn, they fund the next one. Stackgod takes 0%. Public ledger.
+                they earn, they fund the next one. Stakgod takes 0%. Public ledger.
               </p>
             </div>
             <Link href="/support" className="btn-primary whitespace-nowrap">Fund a founder →</Link>

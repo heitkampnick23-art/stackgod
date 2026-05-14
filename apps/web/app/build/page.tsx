@@ -18,6 +18,9 @@ function BuildInner() {
   const [previewHtml, setPreviewHtml] = useState<string>('');
   const [view, setView] = useState<'preview' | 'code'>('preview');
   const [deployedUrl, setDeployedUrl] = useState<string | null>(null);
+  const [versions, setVersions] = useState<Array<{ ts: number }>>([]);
+  const [showVersions, setShowVersions] = useState(false);
+  const [reverting, setReverting] = useState<number | null>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
   const lastIframeUpdate = useRef(0);
@@ -50,7 +53,34 @@ function BuildInner() {
         fetch(d.deployed_url).then((r) => (r.ok ? r.text() : null)).then((html) => { if (html) setPreviewHtml(html); });
       }
     });
+    refreshVersions(appId);
   }, [appId]);
+
+  function refreshVersions(id: string | null) {
+    if (!id) return setVersions([]);
+    fetch(`${API}/builder/versions?app_id=${id}`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : { versions: [] }))
+      .then((d: { versions: Array<{ ts: number }> }) => setVersions(d.versions ?? []))
+      .catch(() => {});
+  }
+
+  async function revert(ts: number) {
+    if (!appId) return;
+    setReverting(ts);
+    const r = await fetch(`${API}/builder/revert`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ app_id: appId, ts }),
+    });
+    setReverting(null);
+    if (!r.ok) { alert('Revert failed'); return; }
+    // Refresh preview from the deployed URL.
+    const html = await fetch(`https://apps.stakgod.com/${(deployedUrl ?? '').match(/apps\.stakgod\.com\/([^/]+)/)?.[1] ?? ''}/`).then((x) => x.text()).catch(() => null);
+    if (html) setPreviewHtml(html);
+    setMsgs((m) => [...m, { role: 'assistant', text: `↩️ Reverted to version from ${new Date(ts).toLocaleString()}.` }]);
+    refreshVersions(appId);
+    setShowVersions(false);
+  }
 
   async function ensureApp(): Promise<string> {
     if (appId) return appId;
@@ -112,6 +142,7 @@ function BuildInner() {
               if (j.deployed_url) setDeployedUrl(j.deployed_url);
               const html = extractHtml(assembled);
               if (html) setPreviewHtml(html);
+              refreshVersions(appId);
             }
           } catch {}
         }
@@ -155,12 +186,20 @@ function BuildInner() {
       {/* Preview / Code */}
       <div className="flex flex-col bg-black">
         <div className="px-4 py-2 border-b border-white/10 flex items-center justify-between gap-3">
-          <div className="flex rounded-full bg-white/5 backdrop-blur-md p-1 text-xs">
-            <button onClick={() => setView('preview')} className={`px-3 py-1 rounded-full font-semibold ${view === 'preview' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Preview</button>
-            <button onClick={() => setView('code')} className={`px-3 py-1 rounded-full font-semibold ${view === 'code' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Code</button>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-full bg-white/5 backdrop-blur-md p-1 text-xs">
+              <button onClick={() => setView('preview')} className={`px-3 py-1 rounded-full font-semibold ${view === 'preview' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Preview</button>
+              <button onClick={() => setView('code')} className={`px-3 py-1 rounded-full font-semibold ${view === 'code' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Code</button>
+            </div>
+            {versions.length > 0 && (
+              <button onClick={() => setShowVersions((v) => !v)}
+                className={`text-xs rounded-full px-3 py-1 font-semibold ${showVersions ? 'bg-white text-black' : 'bg-white/5 text-white/60 hover:text-white'}`}>
+                ↩ Versions ({versions.length})
+              </button>
+            )}
           </div>
           {deployedUrl && (
-            <a href={deployedUrl} target="_blank" rel="noreferrer" className="text-xs text-flame hover:underline truncate max-w-[60%]">
+            <a href={deployedUrl} target="_blank" rel="noreferrer" className="text-xs text-flame hover:underline truncate max-w-[40%]">
               {deployedUrl.replace(/^https?:\/\//, '')} ↗
             </a>
           )}
@@ -170,6 +209,33 @@ function BuildInner() {
             <iframe srcDoc={previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
           ) : (
             <pre className="absolute inset-0 overflow-auto p-4 text-xs leading-relaxed font-mono text-white/90 bg-[#0a0a0f]">{previewHtml || '// no code yet'}</pre>
+          )}
+
+          {/* Versions drawer */}
+          {showVersions && (
+            <div className="absolute top-0 right-0 bottom-0 w-80 bg-ink/90 backdrop-blur-xl border-l border-white/10 overflow-auto p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="font-display text-lg">Versions</div>
+                <button onClick={() => setShowVersions(false)} className="text-white/40 hover:text-white text-xl leading-none">×</button>
+              </div>
+              <div className="text-xs text-white/50 mb-3">Every chat that produced HTML is snapshotted. Click to revert.</div>
+              <ul className="space-y-2">
+                {versions.map((v, i) => (
+                  <li key={v.ts} className="flex items-center justify-between gap-2 rounded-xl bg-white/5 border border-white/10 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold">{i === 0 ? 'Current' : `v${versions.length - i}`}</div>
+                      <div className="text-xs text-white/50 truncate">{new Date(v.ts).toLocaleString()}</div>
+                    </div>
+                    {i > 0 && (
+                      <button onClick={() => revert(v.ts)} disabled={reverting === v.ts}
+                        className="btn-ghost text-xs !px-3 !py-1 shrink-0 disabled:opacity-50">
+                        {reverting === v.ts ? '…' : 'Revert'}
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       </div>

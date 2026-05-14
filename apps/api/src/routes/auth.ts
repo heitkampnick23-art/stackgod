@@ -18,9 +18,9 @@ auth.post('/magic-link', async (c) => {
     method: 'POST',
     headers: { authorization: `Bearer ${c.env.RESEND_API_KEY}`, 'content-type': 'application/json' },
     body: JSON.stringify({
-      from: 'Stackgod <login@stakgod.com>',
+      from: 'Stakgod <login@stakgod.com>',
       to: email,
-      subject: 'Your Stackgod login link',
+      subject: 'Your Stakgod login link',
       html: `<p>Click to sign in: <a href="${link}">${link}</a></p><p>Expires in 15 minutes.</p>`,
     }),
   });

@@ -4,7 +4,7 @@ export default function Docs() {
   return (
     <div className="max-w-4xl mx-auto px-6 py-16">
       <h1 className="font-display text-5xl">Docs</h1>
-      <p className="mt-3 text-white/60">Everything you need to ship with Stackgod.</p>
+      <p className="mt-3 text-white/60">Everything you need to ship with Stakgod.</p>
 
       <div className="mt-12 grid md:grid-cols-2 gap-4">
         {SECTIONS.map((s) => (
@@ -41,7 +41,7 @@ export default function Docs() {
 
       <h2 className="font-display text-3xl mt-16">Bring your own developer accounts</h2>
       <p className="mt-3 text-white/70">
-        Apple Guideline 4.2.6 requires apps to publish under their owner's account, so Stackgod never publishes
+        Apple Guideline 4.2.6 requires apps to publish under their owner's account, so Stakgod never publishes
         on your behalf. To ship to TestFlight or the App Store, connect your own Apple Developer account
         (<b>$99/yr</b> to Apple). For Google Play, connect your Play Console account (<b>$25 one-time</b> to Google).
         We automate every upload using your keys — your apps, your name on the listing, your revenue.

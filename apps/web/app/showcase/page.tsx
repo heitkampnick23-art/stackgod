@@ -22,7 +22,7 @@ export default function Showcase() {
   const cur = DEMOS.find((d) => d.id === active)!;
   return (
     <div className="max-w-6xl mx-auto px-6 py-16">
-      <h1 className="font-display text-5xl">See everything Stackgod ships with.</h1>
+      <h1 className="font-display text-5xl">See everything Stakgod ships with.</h1>
       <p className="mt-2 text-white/60">Click any feature to see it run.</p>
 
       <div className="mt-10 grid lg:grid-cols-[280px_1fr] gap-6">
@@ -53,7 +53,7 @@ function chatPreview() {
         <div className="mt-2 text-white/60">→ generating SwiftUI + web preview…</div>
         <div className="mt-1 text-white/60">→ wiring Sign in with Apple…</div>
         <div className="mt-1 text-white/60">→ adding D1 schema (habits, checkins)…</div>
-        <div className="mt-1 text-white/60">→ deploying to habit-tracker-x9k2.stakgod.app</div>
+        <div className="mt-1 text-white/60">→ deploying to habit-tracker-x9k2.stakgod.com</div>
         <div className="mt-2 text-emerald-400">✓ live in 24s</div>
       </div>
       <div className="rounded-[36px] border-4 border-white/20 bg-gradient-to-b from-amber-500/30 to-flame/30 h-[320px] p-6 text-center flex flex-col justify-center">
@@ -65,7 +65,7 @@ function chatPreview() {
   );
 }
 function authPreview() { return <div className="rounded-xl bg-black/40 p-8 text-center"><button className="btn bg-white text-black w-full">  Sign in with Apple</button><button className="btn bg-white/10 text-white w-full mt-3">G  Continue with Google</button><button className="btn bg-white/10 text-white w-full mt-3">✉ Email me a magic link</button></div>; }
-function payPreview() { return <div className="rounded-xl bg-black/40 p-6 text-sm"><div className="text-white/60">Your customer’s checkout</div><div className="mt-3 rounded bg-white text-black p-4"><div className="font-bold">Pro plan — $19/mo</div><div className="mt-3 h-10 rounded bg-black text-white grid place-items-center font-semibold">Pay $19</div></div><div className="mt-4 text-emerald-400">→ $17.10 to you, $1.90 to Stackgod (10%)</div></div>; }
+function payPreview() { return <div className="rounded-xl bg-black/40 p-6 text-sm"><div className="text-white/60">Your customer’s checkout</div><div className="mt-3 rounded bg-white text-black p-4"><div className="font-bold">Pro plan — $19/mo</div><div className="mt-3 h-10 rounded bg-black text-white grid place-items-center font-semibold">Pay $19</div></div><div className="mt-4 text-emerald-400">→ $17.10 to you, $1.90 to Stakgod (10%)</div></div>; }
 function domainPreview() { return <div className="rounded-xl bg-black/40 p-6"><input defaultValue="myhabits" className="w-full rounded bg-white/10 px-4 py-3 outline-none" /><div className="mt-4 space-y-2 text-sm"><Row d="myhabits.com" p="$10.77" /><Row d="myhabits.app" p="$14.98" /><Row d="myhabits.dev" p="$12.78" /></div></div>; }
 function Row({ d, p }: { d: string; p: string }) { return <div className="flex justify-between rounded bg-white/5 px-4 py-2"><span>{d}</span><span className="text-gold">{p} <button className="ml-3 btn-primary !py-1 !px-3 text-xs">Buy</button></span></div>; }
 function iosPreview() { return <div className="rounded-xl bg-black/40 p-6 text-sm font-mono text-white/80"><div>$ stackgod ship ios</div><div className="text-white/60 mt-2">→ generating SwiftUI project…</div><div className="text-white/60">→ archiving release.ipa…</div><div className="text-white/60">→ uploading to App Store Connect…</div><div className="text-emerald-400 mt-2">✓ TestFlight build 1.0.3 (47) processing — live in ~8 min</div></div>; }

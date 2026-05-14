@@ -1,6 +1,6 @@
 // First 100 Founders Fund — public donations via Stripe Checkout.
 // Goal: $10,000. Every $99 buys an Apple Developer enrollment for a builder
-// who shipped through Stackgod but can't afford the fee. Public ledger.
+// who shipped through Stakgod but can't afford the fee. Public ledger.
 
 import { Hono } from 'hono';
 import Stripe from 'stripe';
@@ -33,7 +33,7 @@ tips.post('/checkout', async (c) => {
         unit_amount: amount,
         product_data: {
           name: 'First 100 Founders Fund',
-          description: 'Funds Apple Developer enrollment for a builder who shipped through Stackgod.',
+          description: 'Funds Apple Developer enrollment for a builder who shipped through Stakgod.',
         },
       },
       quantity: 1,

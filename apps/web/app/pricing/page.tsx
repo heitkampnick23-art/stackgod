@@ -6,7 +6,7 @@ import { useState } from 'react';
 type Cycle = 'month' | 'year';
 
 const TIERS = [
-  { id: 'free',   name: 'Free',   monthly: 0,   yearly: 0,    tag: 'Try it', features: ['5 AI messages / day', '1 app', 'subdomain on stakgod.app', 'Stackgod branding'] },
+  { id: 'free',   name: 'Free',   monthly: 0,   yearly: 0,    tag: 'Try it', features: ['5 AI messages / day', '1 app', 'subdomain on stakgod.com', 'Stakgod branding'] },
   { id: 'hobby',  name: 'Hobby',  monthly: 19,  yearly: 190,  tag: 'Indie',  features: ['200 messages / mo', '3 apps', '1 custom domain', 'Email support'] },
   { id: 'pro',    name: 'Pro',    monthly: 49,  yearly: 490,  tag: 'Most popular', highlight: true, features: ['1,500 messages / mo', 'Unlimited apps', 'Stripe Connect (sell subs)', 'TestFlight ship', 'Custom domains'] },
   { id: 'studio', name: 'Studio', monthly: 149, yearly: 1490, tag: 'Power',  features: ['6,000 messages / mo', 'App Store + Play submit', 'Marketplace listing', 'Priority Opus routing', 'Slack support'] },

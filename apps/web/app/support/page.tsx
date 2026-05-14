@@ -66,16 +66,16 @@ export default function Support() {
         The First <span className="text-gold">100 Founders</span> Fund.
       </h1>
       <p className="mt-4 text-white/80 text-lg leading-relaxed max-w-2xl">
-        Apple charges <b>$99/yr</b> to publish on the App Store. For a 17-year-old in Manila who just built her first app with Stackgod, that&apos;s a wall.
+        Apple charges <b>$99/yr</b> to publish on the App Store. For a 17-year-old in Manila who just built her first app with Stakgod, that&apos;s a wall.
         We&apos;re funding it for her.
       </p>
       <p className="mt-3 text-white/70 max-w-2xl">
-        Every <b className="text-flame">$99</b> here pays a year of Apple Developer enrollment for a builder who shipped through Stackgod but
+        Every <b className="text-flame">$99</b> here pays a year of Apple Developer enrollment for a builder who shipped through Stakgod but
         can&apos;t afford the fee. They publish, they earn, and at $50 of revenue they&apos;re asked to fund the next founder.
         <b className="text-white"> A flywheel of funded founders.</b>
       </p>
       <p className="mt-3 text-white/60 max-w-2xl">
-        Stackgod takes <b>0%</b>. 100% of tips go to Apple/Google fees. Public ledger below — every grant traceable.
+        Stakgod takes <b>0%</b>. 100% of tips go to Apple/Google fees. Public ledger below — every grant traceable.
       </p>
 
       {/* Progress + counters */}
@@ -131,7 +131,7 @@ export default function Support() {
           {busy ? 'Opening Stripe…' : `Tip $${amount || 0} →`}
         </button>
         {err && <div className="mt-2 text-sm text-red-400">{err}</div>}
-        <div className="mt-3 text-center text-xs text-white/40">Secure checkout via Stripe. No card data ever touches Stackgod.</div>
+        <div className="mt-3 text-center text-xs text-white/40">Secure checkout via Stripe. No card data ever touches Stakgod.</div>
       </div>
 
       {/* Recent supporters */}

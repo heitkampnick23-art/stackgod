@@ -70,7 +70,7 @@ export default function ConnectGoogle() {
         <li className="card">
           <div className="font-semibold">2. Create a service account in Google Cloud, link it to Play</div>
           <ol className="text-sm text-white/60 mt-1 list-decimal list-inside space-y-1">
-            <li><a className="text-flame underline" href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noreferrer">Cloud Console → Service Accounts</a> → Create → name it "Stackgod Play Publisher" → Done</li>
+            <li><a className="text-flame underline" href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" rel="noreferrer">Cloud Console → Service Accounts</a> → Create → name it "Stakgod Play Publisher" → Done</li>
             <li>Click into the account → Keys → Add key → JSON → download</li>
             <li><a className="text-flame underline" href="https://play.google.com/console/developers/users-and-permissions" target="_blank" rel="noreferrer">Play Console → Users and permissions</a> → Invite the service account email → grant <b>Release</b> + <b>Edit store listing</b></li>
             <li>Paste the JSON below</li>
