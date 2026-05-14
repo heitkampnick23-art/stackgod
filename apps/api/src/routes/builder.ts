@@ -72,12 +72,17 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
         }
         const cost = costUsd(model as ModelId, tokensIn, tokensOut);
         const html = extractHtml(assembled);
+        const extraFiles = extractFiles(assembled);
         let deployed_url: string | null = null;
         if (html) {
           const ts = Date.now();
+          // Always treat the html block as index.html.
           await c.env.APPS.put(`apps/${app.slug}/index.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
-          // Snapshot for revert. Keys are timestamp-prefixed so list-by-prefix is reverse-chronological.
           await c.env.APPS.put(`apps/${app.slug}/versions/${ts}.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+          // Write any additional <file path="..."> blocks alongside.
+          for (const f of extraFiles.slice(0, 20)) {
+            await c.env.APPS.put(`apps/${app.slug}/${f.path}`, f.body, { httpMetadata: { contentType: f.contentType } });
+          }
           deployed_url = `https://apps.stakgod.com/${app.slug}/`;
           await c.env.DB.prepare(`UPDATE apps SET status='live', updated_at=unixepoch() WHERE id=?`).bind(body.app_id).run();
         }
@@ -212,6 +217,31 @@ function extractHtml(s: string): string | null {
   return html ? html[0] : null;
 }
 
+const TYPE_BY_EXT: Record<string, string> = {
+  html: 'text/html; charset=utf-8',
+  js: 'text/javascript; charset=utf-8',
+  mjs: 'text/javascript; charset=utf-8',
+  css: 'text/css; charset=utf-8',
+  json: 'application/json; charset=utf-8',
+  svg: 'image/svg+xml',
+  txt: 'text/plain; charset=utf-8',
+};
+
+// Extracts <file path="..."> ... </file> blocks for multi-file apps.
+// Paths are sanitized and constrained to a-z0-9._/- with no '..' segments.
+export function extractFiles(s: string): Array<{ path: string; body: string; contentType: string }> {
+  const out: Array<{ path: string; body: string; contentType: string }> = [];
+  const re = /<file\s+path=["']([^"']+)["']>([\s\S]*?)<\/file>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(s))) {
+    const raw = m[1].trim().replace(/^\/+/, '');
+    if (!/^[a-z0-9._\-/]+$/i.test(raw) || raw.includes('..')) continue;
+    const ext = raw.split('.').pop()?.toLowerCase() ?? '';
+    out.push({ path: raw, body: m[2].trim(), contentType: TYPE_BY_EXT[ext] ?? 'application/octet-stream' });
+  }
+  return out;
+}
+
 const SYSTEM_PROMPT = `You are Stakgod, an AI app builder. Each app is ONE self-contained HTML file with inline Tailwind (CDN: https://cdn.tailwindcss.com) and inline JS.
 
 RULES
@@ -220,6 +250,14 @@ RULES
 - If this is the first message and no current app exists, generate a complete fresh HTML file.
 - Wire EVERY button. Use modern responsive Tailwind layouts. Mobile-first.
 - Brief plain-English summary BEFORE the code block (1-3 sentences max). Then the code block. Nothing after.
+
+MULTI-FILE OUTPUT (optional)
+For richer apps, you may emit additional files alongside the main index.html:
+  <file path="app.js">/* JavaScript */</file>
+  <file path="styles.css">/* CSS */</file>
+  <file path="logo.svg"><svg ...></svg></file>
+Reference them from index.html with relative paths (e.g. <script src="app.js"></script>).
+Paths must match [a-z0-9._/-]+ and stay within the app's directory. Up to 20 extra files per turn.
 
 REAL BACKEND — ALWAYS USE \`window.sg.db\` FOR PERSISTENT, MULTI-USER DATA
 The platform auto-injects a tiny SDK into every served app. It's backed by Cloudflare KV scoped to this app, so data persists and is shared across all visitors of this app's URL. Use it for anything beyond ephemeral UI state.
