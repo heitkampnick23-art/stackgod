@@ -1,0 +1,37 @@
+import SwiftUI
+import AuthenticationServices
+
+@main
+struct {{APP_NAME_IDENT}}App: App {
+    var body: some Scene {
+        WindowGroup { RootView() }
+    }
+}
+
+struct RootView: View {
+    @AppStorage("user_id") var userId: String = ""
+    var body: some View {
+        if userId.isEmpty { SignInView() } else { HomeView() }
+    }
+}
+
+struct SignInView: View {
+    @AppStorage("user_id") var userId: String = ""
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("{{APP_NAME}}").font(.largeTitle.bold())
+            SignInWithAppleButton(.signIn) { req in req.requestedScopes = [.email, .fullName] }
+                onCompletion: { res in
+                    if case .success(let auth) = res,
+                       let cred = auth.credential as? ASAuthorizationAppleIDCredential {
+                        userId = cred.user
+                    }
+                }
+                .frame(height: 50).cornerRadius(8).padding(.horizontal, 32)
+        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(.systemBackground))
+    }
+}
+
+struct HomeView: View {
+    var body: some View { Text("Welcome to {{APP_NAME}}").font(.title) }
+}

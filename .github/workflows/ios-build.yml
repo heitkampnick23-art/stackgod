@@ -1,0 +1,48 @@
+name: iOS Build
+on:
+  workflow_dispatch:
+    inputs:
+      app_id: { required: true, type: string }
+      app_name: { required: true, type: string }
+      bundle_id: { required: true, type: string }
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xcodegen
+        run: brew install xcodegen
+      - name: Render template
+        run: |
+          mkdir -p build/${{ inputs.app_name }}
+          # Render apps/codegen-ios/template/* with sed substitutions for {{APP_NAME}}, {{BUNDLE_ID}}, {{TEAM_ID}}.
+      - name: Generate Xcode project
+        working-directory: build/${{ inputs.app_name }}
+        run: xcodegen generate
+      - name: Archive
+        working-directory: build/${{ inputs.app_name }}
+        run: |
+          xcodebuild -scheme "${{ inputs.app_name }}" \
+            -destination "generic/platform=iOS" \
+            -archivePath build/App.xcarchive \
+            archive
+      - name: Export IPA
+        working-directory: build/${{ inputs.app_name }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportOptionsPlist ExportOptions.plist \
+            -exportPath build/
+      - name: Upload to TestFlight
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$ASC_API_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8
+          xcrun altool --upload-app -f build/${{ inputs.app_name }}/build/App.ipa \
+            --type ios \
+            --apiKey "$ASC_API_KEY_ID" \
+            --apiIssuer "$ASC_API_ISSUER_ID"

@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root { color-scheme: dark; }
+
+html, body { background: #0a0a0f; color: #f5f5f7; }
+
+.glow {
+  background: radial-gradient(800px 400px at 50% -100px, rgba(255,91,31,.35), transparent 60%),
+              radial-gradient(600px 300px at 80% 200px, rgba(212,175,55,.2), transparent 60%);
+}
+
+.btn { @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-semibold transition; }
+.btn-primary { @apply btn bg-flame text-white hover:bg-flame/90; }
+.btn-ghost { @apply btn bg-white/10 text-white hover:bg-white/20; }
+.card { @apply rounded-2xl border border-white/10 bg-white/[0.03] p-6; }

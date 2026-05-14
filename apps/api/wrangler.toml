@@ -1,0 +1,44 @@
+name = "stackgod-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+account_id = "4d259cf98fff468b0108b6a80b7a10fc"
+
+routes = [
+  { pattern = "api.stakgod.com/*", zone_name = "stakgod.com" }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "stackgod"
+database_id = "PLACEHOLDER_AFTER_CREATE"
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "stackgod-artifacts"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "PLACEHOLDER_AFTER_CREATE"
+
+[[queues.producers]]
+binding = "BUILD_QUEUE"
+queue = "stackgod-builds"
+
+[[queues.consumers]]
+queue = "stackgod-builds"
+max_batch_size = 5
+
+[vars]
+APP_URL = "https://stakgod.com"
+API_URL = "https://api.stakgod.com"
+
+# secrets set via: wrangler secret put NAME
+# ANTHROPIC_API_KEY
+# STRIPE_SECRET_KEY
+# STRIPE_WEBHOOK_SECRET
+# CF_API_TOKEN_REGISTRAR
+# APPLE_CLIENT_ID, APPLE_TEAM_ID, APPLE_KEY_ID, APPLE_PRIVATE_KEY
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
+# RESEND_API_KEY
+# SESSION_SECRET

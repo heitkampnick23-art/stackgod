@@ -1,0 +1,15 @@
+{
+  "name": "stackgod",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev:web": "pnpm -C apps/web dev",
+    "dev:api": "pnpm -C apps/api dev",
+    "build": "pnpm -r build",
+    "deploy:api": "pnpm -C apps/api deploy",
+    "deploy:web": "pnpm -C apps/web deploy",
+    "deploy": "pnpm deploy:api && pnpm deploy:web"
+  }
+}
