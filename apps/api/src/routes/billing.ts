@@ -11,16 +11,20 @@ export const billing = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 const stripe = (env: Env) => new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2024-12-18.acacia' as Stripe.LatestApiVersion });
 
-const PRICE_IDS: Record<Exclude<Plan, 'free'>, string> = {
-  hobby:  'STRIPE_PRICE_HOBBY',   // replace with live price IDs after creation
-  pro:    'STRIPE_PRICE_PRO',
-  studio: 'STRIPE_PRICE_STUDIO',
-};
+// LIVE price IDs (Stripe acct_1S40wDQu1YpWmfU0 / SUMHEAD)
+export const PRICE_IDS = {
+  hobby:  { month: 'price_1TX0MMQu1YpWmfU0SsoaTL8F', year: 'price_1TX0MPQu1YpWmfU0ba05E6me' },
+  pro:    { month: 'price_1TX0MSQu1YpWmfU04UUr0Ffb', year: 'price_1TX0MVQu1YpWmfU0mM5ma35D' },
+  studio: { month: 'price_1TX0MeQu1YpWmfU0Em6VEuBH', year: 'price_1TX0MhQu1YpWmfU0XzppgklY' },
+} as const;
+
+type Cycle = 'month' | 'year';
 
 billing.post('/checkout', requireAuth, async (c) => {
   const user = c.get('user')!;
-  const { plan } = await c.req.json<{ plan: Exclude<Plan, 'free'> }>();
+  const { plan, cycle = 'month' } = await c.req.json<{ plan: Exclude<Plan, 'free'>; cycle?: Cycle }>();
   if (!PLANS[plan] || plan === 'free') return c.json({ error: 'invalid_plan' }, 400);
+  if (cycle !== 'month' && cycle !== 'year') return c.json({ error: 'invalid_cycle' }, 400);
 
   const s = stripe(c.env);
   let customerId = user.stripe_customer_id;
@@ -32,7 +36,7 @@ billing.post('/checkout', requireAuth, async (c) => {
   const session = await s.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
-    line_items: [{ price: PRICE_IDS[plan], quantity: 1 }],
+    line_items: [{ price: PRICE_IDS[plan][cycle], quantity: 1 }],
     success_url: `${c.env.APP_URL}/dashboard?upgraded=${plan}`,
     cancel_url: `${c.env.APP_URL}/pricing`,
     allow_promotion_codes: true,
@@ -85,7 +89,11 @@ billing.post('/webhook', async (c) => {
       const subId = 'subscription' in obj && typeof obj.subscription === 'string' ? obj.subscription : ('id' in obj && (obj as Stripe.Subscription).items ? obj.id : null);
       const sub = subId ? await s.subscriptions.retrieve(subId) : null;
       const priceId = sub?.items.data[0]?.price.id;
-      const plan: Plan = priceId === PRICE_IDS.studio ? 'studio' : priceId === PRICE_IDS.pro ? 'pro' : priceId === PRICE_IDS.hobby ? 'hobby' : 'free';
+      const plan: Plan =
+        priceId === PRICE_IDS.studio.month || priceId === PRICE_IDS.studio.year ? 'studio' :
+        priceId === PRICE_IDS.pro.month    || priceId === PRICE_IDS.pro.year    ? 'pro' :
+        priceId === PRICE_IDS.hobby.month  || priceId === PRICE_IDS.hobby.year  ? 'hobby' :
+        'free';
       await c.env.DB.prepare(`UPDATE users SET plan=?, stripe_subscription_id=? WHERE stripe_customer_id=?`).bind(plan, sub?.id ?? null, customerId).run();
       break;
     }
