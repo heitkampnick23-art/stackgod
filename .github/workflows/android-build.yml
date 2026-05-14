@@ -1,21 +1,130 @@
-name: Android Build
+name: Android Build → Play Internal
+
 on:
   workflow_dispatch:
     inputs:
-      app_id: { required: true, type: string }
-      app_name: { required: true, type: string }
-      package: { required: true, type: string }
+      build_id: { required: true, type: string }
+      token:    { required: true, type: string }
+      api_url:  { required: true, type: string, default: "https://api.stakgod.com" }
+
+permissions: {}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BUILD_ID: ${{ github.event.inputs.build_id }}
+      TOKEN:    ${{ github.event.inputs.token }}
+      API_URL:  ${{ github.event.inputs.api_url }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with: { distribution: 'temurin', java-version: '17' }
-      - name: Render Compose template + build .aab
-        run: echo "TODO render templates and run ./gradlew bundleRelease"
-      - name: Upload to Play internal track
+
+      - name: Notify running
+        run: |
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"status":"running","gh_run_id":"'"${{ github.run_id }}"'","gh_run_url":"https://github.com/'"${{ github.repository }}"'/actions/runs/'"${{ github.run_id }}"'"}'
+
+      - name: Fetch build credentials
+        run: |
+          curl -fsS "$API_URL/builds/$BUILD_ID/credentials?token=$TOKEN" -o /tmp/creds.json
+          echo "APP_NAME=$(jq -r .app_name /tmp/creds.json)"                 >> $GITHUB_ENV
+          echo "APP_TYPE=$(jq -r '.slug | gsub("-";"_") | gsub("[^a-zA-Z0-9_]";"") | sub("^[0-9]+";"App")' /tmp/creds.json)" >> $GITHUB_ENV
+          echo "PACKAGE_NAME=$(jq -r .package_name /tmp/creds.json)"         >> $GITHUB_ENV
+          echo "APP_URL=$(jq -r .app_url /tmp/creds.json)"                   >> $GITHUB_ENV
+          jq -r .service_account_json /tmp/creds.json > /tmp/play-sa.json
+          rm /tmp/creds.json
+
+      - name: Fetch or generate per-app upload keystore
+        run: |
+          set -e
+          mkdir -p apps/codegen-android
+          STATUS=$(curl -s -o /tmp/ks.b64 -w "%{http_code}" "$API_URL/builds/$BUILD_ID/keystore?token=$TOKEN")
+          if [ "$STATUS" = "200" ]; then
+            echo "Reusing existing keystore for this app."
+            base64 -d < /tmp/ks.b64 > apps/codegen-android/upload.jks
+            KEYSTORE_PASSWORD=$(curl -fsS "$API_URL/builds/$BUILD_ID/keystore/password?token=$TOKEN")
+          else
+            echo "First build — generating fresh keystore."
+            KEYSTORE_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=')
+            keytool -genkeypair -v \
+              -keystore apps/codegen-android/upload.jks \
+              -alias upload \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -keypass "$KEYSTORE_PASSWORD" \
+              -dname "CN=$APP_NAME, O=Stakgod, C=US"
+            curl -fsS -X PUT "$API_URL/builds/$BUILD_ID/keystore?token=$TOKEN" \
+              -H 'content-type: application/json' \
+              -d "$(jq -n --arg ks "$(base64 < apps/codegen-android/upload.jks | tr -d '\n')" --arg pw "$KEYSTORE_PASSWORD" '{keystore_b64:$ks, password:$pw}')"
+          fi
+          echo "::add-mask::$KEYSTORE_PASSWORD"
+          echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $GITHUB_ENV
+          echo "KEYSTORE_FILE=$(pwd)/apps/codegen-android/upload.jks" >> $GITHUB_ENV
+          echo "KEY_ALIAS=upload" >> $GITHUB_ENV
+
+      - name: Render template
+        run: ./apps/codegen-android/render.sh
+
+      - name: Set up Gradle wrapper
+        working-directory: apps/codegen-android/build/${{ env.APP_TYPE }}
+        run: |
+          gradle wrapper --gradle-version 8.10
+          chmod +x gradlew
+
+      - name: Build signed AAB
+        working-directory: apps/codegen-android/build/${{ env.APP_TYPE }}
+        run: ./gradlew :app:bundleRelease --no-daemon --stacktrace
         env:
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-        run: echo "TODO use google-api-python-client edits.upload + commit to internal track"
+          KEYSTORE_FILE:     ${{ env.KEYSTORE_FILE }}
+          KEYSTORE_PASSWORD: ${{ env.KEYSTORE_PASSWORD }}
+          KEY_ALIAS:         upload
+
+      - name: Upload AAB to Stakgod (so user can download)
+        run: |
+          AAB="apps/codegen-android/build/$APP_TYPE/app/build/outputs/bundle/release/app-release.aab"
+          curl -fsS -X PUT "$API_URL/builds/$BUILD_ID/artifact?token=$TOKEN&name=app-release.aab" \
+            -H 'content-type: application/octet-stream' \
+            --data-binary "@$AAB"
+
+      - name: Upload to Play internal track
+        id: play
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJson: /tmp/play-sa.json
+          packageName: ${{ env.PACKAGE_NAME }}
+          releaseFiles: apps/codegen-android/build/${{ env.APP_TYPE }}/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          status: completed
+
+      - name: Notify success
+        if: success()
+        run: |
+          PLAY_OUTCOME='${{ steps.play.outcome }}'
+          if [ "$PLAY_OUTCOME" = "success" ]; then
+            ART="https://play.google.com/console/u/0/developers/-/app-list"
+            MSG="Uploaded to Play internal track."
+          else
+            ART="$API_URL/builds/$BUILD_ID/artifact?download=1"
+            MSG="AAB built. Play upload skipped or failed (likely first-time package needs manual upload). Download the AAB from your dashboard and upload to Play Console once; future builds auto-publish."
+          fi
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d "$(jq -n --arg s succeeded --arg url "$ART" --arg note "$MSG" '{status:$s, artifact_url:$url, error:$note}')"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ERR=$(printf '%s' "Build failed; see GH Actions log" | jq -Rs .)
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"status":"failed","error":'"$ERR"'}' || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f /tmp/play-sa.json apps/codegen-android/upload.jks /tmp/ks.b64 || true

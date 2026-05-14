@@ -4,7 +4,7 @@ import Link from 'next/link';
 
 interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; }
 interface Usage { messages: number; cost: number; }
-interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; error: string | null; queued_at: number; }
+interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; artifact_url: string | null; error: string | null; queued_at: number; }
 
 const API = 'https://api.stakgod.com';
 
@@ -27,9 +27,11 @@ export default function Dashboard() {
     fetch(`${API}/builds`, { credentials: 'include' }).then(r => r.ok ? r.json() : { builds: [] }).then((d: { builds: Build[] }) => setBuilds(d.builds));
   }
 
-  async function shipIos(appId: string) {
-    setShipping(appId);
-    const r = await fetch(`${API}/mobile/ios/ship`, {
+  async function shipIos(appId: string) { return ship(appId, 'ios'); }
+  async function shipAndroid(appId: string) { return ship(appId, 'android'); }
+  async function ship(appId: string, kind: 'ios' | 'android') {
+    setShipping(appId + ':' + kind);
+    const r = await fetch(`${API}/mobile/${kind}/ship`, {
       method: 'POST', credentials: 'include',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ app_id: appId }),
@@ -37,7 +39,7 @@ export default function Dashboard() {
     setShipping(null);
     const j = await r.json();
     if (!r.ok) {
-      if (j.connect_url) { if (confirm(`${j.error}. Connect Apple now?`)) location.href = j.connect_url; return; }
+      if (j.connect_url) { if (confirm(`${j.error}. Connect now?`)) location.href = j.connect_url; return; }
       if (j.upgrade_url) { if (confirm(`${j.error}. Upgrade now?`)) location.href = j.upgrade_url; return; }
       alert(`Ship failed: ${j.error}`);
       return;
@@ -92,7 +94,15 @@ export default function Dashboard() {
       <div className="mt-4 grid md:grid-cols-3 gap-4">
         {apps.length === 0 && <div className="card text-white/50">No apps yet. <Link href="/build" className="text-flame">Start building →</Link></div>}
         {apps.map((a) => (
-          <AppCard key={a.id} app={a} onShip={() => shipIos(a.id)} shipping={shipping === a.id} onChange={() => fetch(`${API}/apps`, { credentials: 'include' }).then(r => r.json()).then(d => setApps(d.apps))} />
+          <AppCard
+            key={a.id}
+            app={a}
+            shippingIos={shipping === a.id + ':ios'}
+            shippingAndroid={shipping === a.id + ':android'}
+            onShipIos={() => shipIos(a.id)}
+            onShipAndroid={() => shipAndroid(a.id)}
+            onChange={() => fetch(`${API}/apps`, { credentials: 'include' }).then(r => r.json()).then(d => setApps(d.apps))}
+          />
         ))}
       </div>
 
@@ -102,7 +112,7 @@ export default function Dashboard() {
           <div className="mt-4 card !p-0 overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-white/5 text-left text-white/60 text-xs uppercase">
-                <tr><th className="p-3">Status</th><th className="p-3">Kind</th><th className="p-3">Bundle</th><th className="p-3">Queued</th><th className="p-3">Logs</th></tr>
+                <tr><th className="p-3">Status</th><th className="p-3">Kind</th><th className="p-3">Bundle</th><th className="p-3">Queued</th><th className="p-3">Logs</th><th className="p-3">Artifact</th></tr>
               </thead>
               <tbody>
                 {builds.map(b => (
@@ -112,6 +122,7 @@ export default function Dashboard() {
                     <td className="p-3 font-mono text-xs">{b.bundle_id ?? '—'}</td>
                     <td className="p-3 text-white/60 text-xs">{new Date(b.queued_at * 1000).toLocaleString()}</td>
                     <td className="p-3 text-xs">{b.gh_run_url ? <a className="text-flame underline" href={b.gh_run_url} target="_blank" rel="noreferrer">view</a> : '—'}</td>
+                    <td className="p-3 text-xs">{b.artifact_url ? <a className="text-flame underline" href={b.artifact_url} target="_blank" rel="noreferrer">{b.kind === 'ios' ? '.ipa' : '.aab'} ↓</a> : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -130,7 +141,7 @@ function BuildStatus({ status }: { status: string }) {
   return <span className={`font-semibold text-xs uppercase ${cls}`}>{status}</span>;
 }
 
-function AppCard({ app, onShip, shipping, onChange }: { app: App; onShip: () => void; shipping: boolean; onChange: () => void }) {
+function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, onChange }: { app: App; onShipIos: () => void; onShipAndroid: () => void; shippingIos: boolean; shippingAndroid: boolean; onChange: () => void }) {
   const [openDomain, setOpenDomain] = useState(false);
   const [domain, setDomain] = useState(app.custom_domain ?? '');
   const [busy, setBusy] = useState(false);
@@ -177,9 +188,14 @@ function AppCard({ app, onShip, shipping, onChange }: { app: App; onShip: () => 
           {app.custom_domain ? '🌐 ' + app.custom_domain : '🌐 Custom domain'}
         </button>
       </div>
-      <button onClick={onShip} disabled={shipping} className="btn-ghost text-xs mt-2 w-full disabled:opacity-50">
-        {shipping ? 'Queueing…' : '🚀 Ship to TestFlight'}
-      </button>
+      <div className="grid grid-cols-2 gap-2 mt-2">
+        <button onClick={onShipIos} disabled={shippingIos} className="btn-ghost text-xs disabled:opacity-50">
+          {shippingIos ? '…' : '🍎 TestFlight'}
+        </button>
+        <button onClick={onShipAndroid} disabled={shippingAndroid} className="btn-ghost text-xs disabled:opacity-50">
+          {shippingAndroid ? '…' : '🤖 Play'}
+        </button>
+      </div>
 
       {openDomain && (
         <div className="mt-3 pt-3 border-t border-white/10 text-xs">
