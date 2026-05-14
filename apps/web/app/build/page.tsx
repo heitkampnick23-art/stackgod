@@ -1,27 +1,69 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+
+const API = 'https://api.stakgod.com';
 
 interface Msg { role: 'user' | 'assistant'; text: string; }
 
-export default function Build() {
-  const [msgs, setMsgs] = useState<Msg[]>([{ role: 'assistant', text: 'What do you want to build today? Try: "a habit tracker with streaks and Apple sign in."' }]);
+function BuildInner() {
+  const params = useSearchParams();
+  const initialAppId = params.get('app');
+
+  const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [appId, setAppId] = useState<string | null>(null);
+  const [appId, setAppId] = useState<string | null>(initialAppId);
   const [usage, setUsage] = useState<{ messages: number } | null>(null);
-  const [previewHtml, setPreviewHtml] = useState('<div style="display:grid;place-items:center;height:100%;color:#888;font-family:system-ui">Your app will appear here</div>');
+  const [previewHtml, setPreviewHtml] = useState<string>('');
+  const [view, setView] = useState<'preview' | 'code'>('preview');
+  const [deployedUrl, setDeployedUrl] = useState<string | null>(null);
+
   const endRef = useRef<HTMLDivElement>(null);
+  const lastIframeUpdate = useRef(0);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [msgs]);
-  useEffect(() => { fetch('https://api.stakgod.com/builder/usage', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then(d => d && setUsage(d.today)).catch(() => {}); }, [streaming]);
+
+  useEffect(() => {
+    fetch(`${API}/builder/usage`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setUsage(d.today))
+      .catch(() => {});
+  }, [streaming]);
+
+  // Load history + current HTML when an app is in the URL.
+  useEffect(() => {
+    if (!appId) {
+      setMsgs([{ role: 'assistant', text: 'What do you want to build today? Try: "a habit tracker with streaks and Apple sign in."' }]);
+      setPreviewHtml(emptyPreview());
+      return;
+    }
+    fetch(`${API}/builder/messages?app_id=${appId}`, { credentials: 'include' }).then((r) => {
+      if (r.status === 401) { location.href = `/login?next=/build?app=${appId}`; return null; }
+      return r.ok ? r.json() : null;
+    }).then((d) => {
+      if (!d) return;
+      const loaded: Msg[] = (d.messages ?? []).map((m: { role: string; content: string }) => ({ role: m.role as 'user' | 'assistant', text: m.content }));
+      setMsgs(loaded.length ? loaded : [{ role: 'assistant', text: 'Welcome back. What do you want to change?' }]);
+      if (d.deployed_url) {
+        setDeployedUrl(d.deployed_url);
+        fetch(d.deployed_url).then((r) => (r.ok ? r.text() : null)).then((html) => { if (html) setPreviewHtml(html); });
+      }
+    });
+  }, [appId]);
 
   async function ensureApp(): Promise<string> {
     if (appId) return appId;
-    const r = await fetch('https://api.stakgod.com/apps', { method: 'POST', credentials: 'include', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Untitled' }) });
+    const r = await fetch(`${API}/apps`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: input.slice(0, 40) || 'Untitled' }),
+    });
     if (r.status === 401) { location.href = '/login?next=/build'; throw new Error('auth'); }
-    const { id } = await r.json();
-    setAppId(id);
-    return id;
+    const j = await r.json();
+    setAppId(j.id);
+    history.replaceState(null, '', `/build?app=${j.id}`);
+    return j.id;
   }
 
   async function send() {
@@ -32,10 +74,10 @@ export default function Build() {
     setStreaming(true);
     try {
       const id = await ensureApp();
-      const r = await fetch('https://api.stakgod.com/builder/chat', {
+      const r = await fetch(`${API}/builder/chat`, {
         method: 'POST', credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ app_id: id, message: text, intent: 'generate' }),
+        body: JSON.stringify({ app_id: id, message: text, intent: 'edit' }),
       });
       if (r.status === 402) {
         const j = await r.json();
@@ -61,6 +103,14 @@ export default function Build() {
               assembled += j.delta;
               setMsgs((m) => [...m.slice(0, -1), { role: 'assistant', text: assembled }]);
               const html = extractHtml(assembled);
+              if (html && Date.now() - lastIframeUpdate.current > 200) {
+                setPreviewHtml(html);
+                lastIframeUpdate.current = Date.now();
+              }
+            }
+            if (j.done) {
+              if (j.deployed_url) setDeployedUrl(j.deployed_url);
+              const html = extractHtml(assembled);
               if (html) setPreviewHtml(html);
             }
           } catch {}
@@ -72,36 +122,84 @@ export default function Build() {
   }
 
   return (
-    <div className="grid md:grid-cols-[1fr_1fr] gap-0 h-[calc(100vh-4rem)]">
-      <div className="flex flex-col border-r border-white/5">
-        <div className="px-6 py-3 border-b border-white/5 flex items-center justify-between">
+    <div className="grid md:grid-cols-[480px_1fr] gap-0 h-[calc(100vh-4rem)]">
+      {/* Chat */}
+      <div className="flex flex-col border-r border-white/10 bg-ink/40 backdrop-blur-xl">
+        <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between">
           <div className="text-sm text-white/60">Builder</div>
           {usage && <div className="text-xs text-white/40">{usage.messages} msgs today</div>}
         </div>
         <div className="flex-1 overflow-auto px-6 py-6 space-y-4">
           {msgs.map((m, i) => (
-            <div key={i} className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'ml-auto bg-flame text-white' : 'bg-white/5 text-white/90'}`}>{m.text || (streaming && i === msgs.length - 1 ? '…' : '')}</div>
+            <div key={i} className={`max-w-[90%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${m.role === 'user' ? 'ml-auto bg-flame text-white' : 'bg-white/5 text-white/90 border border-white/5'}`}>
+              {m.role === 'assistant' ? renderAssistant(m.text, streaming && i === msgs.length - 1) : m.text}
+            </div>
           ))}
           <div ref={endRef} />
         </div>
-        <div className="p-4 border-t border-white/5">
+        <div className="p-4 border-t border-white/10">
           <div className="flex gap-2">
-            <input value={input} onChange={(e) => setInput(e.target.value)}
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && send()}
-              placeholder="Describe your app…"
-              className="flex-1 rounded-full bg-white/10 px-5 py-3 outline-none focus:ring-2 focus:ring-flame" />
-            <button onClick={send} disabled={streaming} className="btn-primary disabled:opacity-50">Send</button>
+              placeholder={appId ? 'What do you want to change?' : 'Describe your app…'}
+              className="flex-1 rounded-full bg-white/10 px-5 py-3 outline-none focus:ring-2 focus:ring-flame backdrop-blur-md" />
+            <button onClick={send} disabled={streaming} className="btn-primary disabled:opacity-50">
+              {streaming ? '…' : 'Send'}
+            </button>
           </div>
         </div>
       </div>
-      <div className="bg-black">
-        <iframe srcDoc={previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms" />
+
+      {/* Preview / Code */}
+      <div className="flex flex-col bg-black">
+        <div className="px-4 py-2 border-b border-white/10 flex items-center justify-between gap-3">
+          <div className="flex rounded-full bg-white/5 backdrop-blur-md p-1 text-xs">
+            <button onClick={() => setView('preview')} className={`px-3 py-1 rounded-full font-semibold ${view === 'preview' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Preview</button>
+            <button onClick={() => setView('code')} className={`px-3 py-1 rounded-full font-semibold ${view === 'code' ? 'bg-white text-black' : 'text-white/60 hover:text-white'}`}>Code</button>
+          </div>
+          {deployedUrl && (
+            <a href={deployedUrl} target="_blank" rel="noreferrer" className="text-xs text-flame hover:underline truncate max-w-[60%]">
+              {deployedUrl.replace(/^https?:\/\//, '')} ↗
+            </a>
+          )}
+        </div>
+        <div className="flex-1 relative">
+          {view === 'preview' ? (
+            <iframe srcDoc={previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
+          ) : (
+            <pre className="absolute inset-0 overflow-auto p-4 text-xs leading-relaxed font-mono text-white/90 bg-[#0a0a0f]">{previewHtml || '// no code yet'}</pre>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
+export default function Build() {
+  return (
+    <Suspense fallback={<div className="p-12 text-white/60">Loading…</div>}>
+      <BuildInner />
+    </Suspense>
+  );
+}
+
+function renderAssistant(text: string, streaming: boolean) {
+  if (!text) return streaming ? <span className="opacity-50">thinking…</span> : '';
+  // Hide the giant code block in chat — show only the prose. Code lives in the right pane.
+  const stripped = text.replace(/```html[\s\S]*?(```|$)/g, '').trim();
+  return stripped || (streaming ? <span className="opacity-50">writing your app…</span> : <span className="opacity-50">(see preview →)</span>);
+}
+
 function extractHtml(s: string): string | null {
-  const m = s.match(/```html\n([\s\S]*?)(```|$)/);
-  return m ? m[1] : null;
+  const fenced = s.match(/```html\n([\s\S]*?)(?:```|$)/);
+  if (fenced) return fenced[1];
+  const doctype = s.match(/<!doctype html[\s\S]*/i);
+  if (doctype) return doctype[0];
+  return null;
+}
+
+function emptyPreview(): string {
+  return `<!doctype html><meta charset=utf-8><body style="font:16px system-ui;background:#0a0a0f;color:#666;display:grid;place-items:center;height:100vh;margin:0;text-align:center"><div><div style="font-size:64px;margin-bottom:16px">✨</div><div style="font-size:18px;color:#888">Your app will appear here as you chat</div></div></body>`;
 }

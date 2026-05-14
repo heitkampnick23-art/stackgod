@@ -1,5 +1,6 @@
-// Builder chat: streams Claude responses, counts tokens, decrements credits,
-// auto-deploys generated HTML to R2 (served by stackgod-apps at apps.stakgod.com/{slug}).
+// Builder chat: streams Claude responses with full conversation history,
+// passes the currently deployed HTML so iterations PATCH instead of regenerate,
+// auto-deploys to R2 on stream completion.
 
 import { Hono } from 'hono';
 import Anthropic from '@anthropic-ai/sdk';
@@ -12,24 +13,47 @@ export const builder = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 interface ChatBody { app_id: string; message: string; intent?: 'edit' | 'generate' | 'plan' | 'fix'; }
 
+const MAX_HISTORY = 20; // last N messages; older summarized as "(prior)" by us
+const MAX_HTML_IN_CONTEXT = 80_000; // chars; ~20k tokens — Claude can handle full files
+
 builder.post('/chat', requireAuth, requireCredits, async (c) => {
   const user = c.get('user')!;
   const body = await c.req.json<ChatBody>();
-  const intent = body.intent ?? 'generate';
+  const intent = body.intent ?? 'edit';
   const model = pickModel({ intent, promptChars: body.message.length, plan: user.plan });
 
   const app = await c.env.DB.prepare(`SELECT slug FROM apps WHERE id=? AND user_id=?`).bind(body.app_id, user.id).first<{ slug: string }>();
   if (!app) return c.json({ error: 'app_not_found' }, 404);
 
-  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
+  // Load conversation history.
   const convoId = await ensureConversation(c.env.DB, body.app_id, user.id);
+  const history = await c.env.DB.prepare(
+    `SELECT role, content FROM messages WHERE conversation_id=? ORDER BY created_at ASC LIMIT ?`
+  ).bind(convoId, MAX_HISTORY).all<{ role: 'user' | 'assistant'; content: string }>();
+
+  // Current deployed HTML — so Claude can patch instead of regenerate.
+  const currentObj = await c.env.APPS.get(`apps/${app.slug}/index.html`);
+  const currentHtml = currentObj ? (await currentObj.text()).slice(0, MAX_HTML_IN_CONTEXT) : null;
+
+  // Persist the new user message NOW so streaming UI can re-load it.
   await c.env.DB.prepare(
     `INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?)`
   ).bind(crypto.randomUUID(), convoId, body.message).run();
 
+  const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+  if (currentHtml) {
+    messages.push({
+      role: 'user',
+      content: `Here is the CURRENT deployed app at apps.stakgod.com/${app.slug}/. Modify this when the user asks for changes — don't regenerate from scratch.\n\n\`\`\`html\n${currentHtml}\n\`\`\``,
+    });
+    messages.push({ role: 'assistant', content: `Got it — I'll edit this in place. What would you like to change?` });
+  }
+  for (const m of history.results ?? []) messages.push({ role: m.role, content: m.content });
+  messages.push({ role: 'user', content: body.message });
+
+  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
   const stream = await client.messages.stream({
-    model, max_tokens: 4096, system: SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: body.message }],
+    model, max_tokens: 8192, system: SYSTEM_PROMPT, messages,
   });
 
   const sse = new ReadableStream({
@@ -47,7 +71,6 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
           if (ev.type === 'message_start' && ev.message.usage) tokensIn = ev.message.usage.input_tokens;
         }
         const cost = costUsd(model as ModelId, tokensIn, tokensOut);
-
         const html = extractHtml(assembled);
         let deployed_url: string | null = null;
         if (html) {
@@ -55,7 +78,6 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
           deployed_url = `https://apps.stakgod.com/${app.slug}/`;
           await c.env.DB.prepare(`UPDATE apps SET status='live', updated_at=unixepoch() WHERE id=?`).bind(body.app_id).run();
         }
-
         await Promise.all([
           c.env.DB.prepare(
             `INSERT INTO messages (id, conversation_id, role, content, model, tokens_in, tokens_out)
@@ -78,7 +100,22 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
   return new Response(sse, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } });
 });
 
-// Manually deploy raw HTML (used by editor "Save" or external integrations).
+// Conversation history for the dashboard / chat UI on load.
+builder.get('/messages', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const appId = c.req.query('app_id');
+  if (!appId) return c.json({ error: 'missing_app_id' }, 400);
+  const app = await c.env.DB.prepare(`SELECT id, slug FROM apps WHERE id=? AND user_id=?`).bind(appId, user.id).first<{ id: string; slug: string }>();
+  if (!app) return c.json({ error: 'not_found' }, 404);
+  const convo = await c.env.DB.prepare(`SELECT id FROM conversations WHERE app_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1`).bind(appId, user.id).first<{ id: string }>();
+  if (!convo) return c.json({ messages: [], deployed_url: null });
+  const rows = await c.env.DB.prepare(
+    `SELECT role, content, created_at FROM messages WHERE conversation_id=? ORDER BY created_at ASC LIMIT 100`
+  ).bind(convo.id).all<{ role: string; content: string; created_at: number }>();
+  return c.json({ messages: rows.results, deployed_url: `https://apps.stakgod.com/${app.slug}/` });
+});
+
+// Manually deploy raw HTML.
 builder.post('/deploy', requireAuth, async (c) => {
   const user = c.get('user')!;
   const { app_id, html } = await c.req.json<{ app_id: string; html: string }>();
@@ -101,9 +138,7 @@ builder.get('/usage', requireAuth, async (c) => {
 });
 
 async function ensureConversation(db: D1Database, appId: string, userId: string): Promise<string> {
-  const existing = await db.prepare(
-    `SELECT id FROM conversations WHERE app_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1`
-  ).bind(appId, userId).first<{ id: string }>();
+  const existing = await db.prepare(`SELECT id FROM conversations WHERE app_id=? AND user_id=? ORDER BY created_at DESC LIMIT 1`).bind(appId, userId).first<{ id: string }>();
   if (existing) return existing.id;
   const id = crypto.randomUUID();
   await db.prepare(`INSERT INTO conversations (id, app_id, user_id) VALUES (?, ?, ?)`).bind(id, appId, userId).run();
@@ -111,7 +146,6 @@ async function ensureConversation(db: D1Database, appId: string, userId: string)
 }
 
 function extractHtml(s: string): string | null {
-  // Prefer fenced ```html ... ``` block; fallback to a <!doctype html> or <html> root.
   const fenced = s.match(/```html\n([\s\S]*?)```/);
   if (fenced) return fenced[1].trim();
   const doctype = s.match(/<!doctype html[\s\S]*<\/html>/i);
@@ -120,4 +154,22 @@ function extractHtml(s: string): string | null {
   return html ? html[0] : null;
 }
 
-const SYSTEM_PROMPT = `You are Stackgod, an AI app builder. Output a single self-contained HTML file (with inline Tailwind via CDN or vanilla CSS, and inline JS) wrapped in a fenced \`\`\`html ... \`\`\` block. The page must be modern, responsive, accessible, and fully wired — every button does something. Use localStorage for state. Never ship dead UI.`;
+const SYSTEM_PROMPT = `You are Stackgod, an AI app builder. Each app is ONE self-contained HTML file with inline Tailwind (CDN: https://cdn.tailwindcss.com) and inline JS.
+
+RULES
+- ALWAYS wrap your final HTML in a fenced \`\`\`html ... \`\`\` block. The platform extracts it from there and deploys to apps.stakgod.com automatically.
+- If a "CURRENT deployed app" was provided, EDIT IT IN PLACE. Re-emit the entire updated file (do not output diffs or partial snippets — we always replace the whole file). Preserve everything the user didn't ask to change.
+- If this is the first message and no current app exists, generate a complete fresh HTML file.
+- Wire EVERY button — never ship dead UI. Use localStorage for client state. Use modern responsive Tailwind layouts. Mobile-first.
+- Brief plain-English summary BEFORE the code block (1-3 sentences max). Then the code block. Nothing after.
+- For data: prefer localStorage. If a real backend is required, mention it but stub with localStorage.
+
+OUTPUT TEMPLATE
+{1-3 sentence summary of what changed or what was built}
+
+\`\`\`html
+<!doctype html>
+<html lang="en">
+...full updated file...
+</html>
+\`\`\``;
