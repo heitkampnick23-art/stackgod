@@ -25,10 +25,12 @@ id = "749eec723bcc4db1892ede8c1a4b401b"
 binding = "BUILD_QUEUE"
 queue = "stackgod-builds"
 
-# Consumer wired in a separate Worker once iOS/Android build handlers land.
-# [[queues.consumers]]
-# queue = "stackgod-builds"
-# max_batch_size = 5
+[[queues.consumers]]
+queue = "stackgod-builds"
+max_batch_size = 5
+max_batch_timeout = 10
+max_retries = 3
+dead_letter_queue = "stackgod-builds-dlq"
 
 [vars]
 APP_URL = "https://stakgod.com"
@@ -43,3 +45,7 @@ API_URL = "https://api.stakgod.com"
 # GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
 # RESEND_API_KEY
 # SESSION_SECRET
+# ENCRYPTION_KEY (base64 32 bytes — AES-GCM at-rest)
+# BUILD_TOKEN_SECRET (HMAC for /builds/:id/* one-time tokens)
+# GH_PAT (fine-grained PAT with workflows:write on stackgod repo)
+# GH_REPO ("heitkampnick23-art/stackgod")

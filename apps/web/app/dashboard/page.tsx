@@ -4,16 +4,46 @@ import Link from 'next/link';
 
 interface App { id: string; slug: string; name: string; status: string; }
 interface Usage { messages: number; cost: number; }
+interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; error: string | null; queued_at: number; }
+
+const API = 'https://api.stakgod.com';
 
 export default function Dashboard() {
   const [apps, setApps] = useState<App[]>([]);
   const [usage, setUsage] = useState<Usage | null>(null);
   const [plan, setPlan] = useState('free');
+  const [builds, setBuilds] = useState<Build[]>([]);
+  const [shipping, setShipping] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('https://api.stakgod.com/apps', { credentials: 'include' }).then(r => r.ok ? r.json() : { apps: [] }).then((d: { apps: App[] }) => setApps(d.apps));
-    fetch('https://api.stakgod.com/builder/usage', { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((d: { today: Usage; plan: string } | null) => { if (d) { setUsage(d.today); setPlan(d.plan); } });
+    fetch(`${API}/apps`, { credentials: 'include' }).then(r => r.ok ? r.json() : { apps: [] }).then((d: { apps: App[] }) => setApps(d.apps));
+    fetch(`${API}/builder/usage`, { credentials: 'include' }).then(r => r.ok ? r.json() : null).then((d: { today: Usage; plan: string } | null) => { if (d) { setUsage(d.today); setPlan(d.plan); } });
+    refreshBuilds();
+    const t = setInterval(refreshBuilds, 15000);
+    return () => clearInterval(t);
   }, []);
+
+  function refreshBuilds() {
+    fetch(`${API}/builds`, { credentials: 'include' }).then(r => r.ok ? r.json() : { builds: [] }).then((d: { builds: Build[] }) => setBuilds(d.builds));
+  }
+
+  async function shipIos(appId: string) {
+    setShipping(appId);
+    const r = await fetch(`${API}/mobile/ios/ship`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ app_id: appId }),
+    });
+    setShipping(null);
+    const j = await r.json();
+    if (!r.ok) {
+      if (j.connect_url) { if (confirm(`${j.error}. Connect Apple now?`)) location.href = j.connect_url; return; }
+      if (j.upgrade_url) { if (confirm(`${j.error}. Upgrade now?`)) location.href = j.upgrade_url; return; }
+      alert(`Ship failed: ${j.error}`);
+      return;
+    }
+    refreshBuilds();
+  }
 
   async function connectStripe() {
     const r = await fetch('https://api.stakgod.com/billing/connect/onboard', { method: 'POST', credentials: 'include' });
@@ -62,13 +92,52 @@ export default function Dashboard() {
       <div className="mt-4 grid md:grid-cols-3 gap-4">
         {apps.length === 0 && <div className="card text-white/50">No apps yet. <Link href="/build" className="text-flame">Start building →</Link></div>}
         {apps.map((a) => (
-          <Link key={a.id} href={`/build?app=${a.id}`} className="card hover:border-flame/40 transition block">
-            <div className="font-semibold">{a.name}</div>
-            <div className="text-xs text-white/50 mt-1">{a.slug}.stakgod.app</div>
-            <div className="mt-3 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{a.status}</div>
-          </Link>
+          <div key={a.id} className="card">
+            <Link href={`/build?app=${a.id}`} className="block">
+              <div className="font-semibold">{a.name}</div>
+              <div className="text-xs text-white/50 mt-1">{a.slug}.stakgod.app</div>
+              <div className="mt-3 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{a.status}</div>
+            </Link>
+            <button
+              onClick={() => shipIos(a.id)}
+              disabled={shipping === a.id}
+              className="btn-ghost text-xs mt-3 w-full disabled:opacity-50">
+              {shipping === a.id ? 'Queueing…' : '🚀 Ship to TestFlight'}
+            </button>
+          </div>
         ))}
       </div>
+
+      {builds.length > 0 && (
+        <>
+          <h2 className="font-display text-2xl mt-12">Recent builds</h2>
+          <div className="mt-4 card !p-0 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-white/5 text-left text-white/60 text-xs uppercase">
+                <tr><th className="p-3">Status</th><th className="p-3">Kind</th><th className="p-3">Bundle</th><th className="p-3">Queued</th><th className="p-3">Logs</th></tr>
+              </thead>
+              <tbody>
+                {builds.map(b => (
+                  <tr key={b.id} className="border-t border-white/5">
+                    <td className="p-3"><BuildStatus status={b.status} /></td>
+                    <td className="p-3 uppercase text-xs">{b.kind}</td>
+                    <td className="p-3 font-mono text-xs">{b.bundle_id ?? '—'}</td>
+                    <td className="p-3 text-white/60 text-xs">{new Date(b.queued_at * 1000).toLocaleString()}</td>
+                    <td className="p-3 text-xs">{b.gh_run_url ? <a className="text-flame underline" href={b.gh_run_url} target="_blank" rel="noreferrer">view</a> : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
     </div>
   );
+}
+
+function BuildStatus({ status }: { status: string }) {
+  const cls = status === 'succeeded' ? 'text-emerald-400' :
+              status === 'failed'    ? 'text-red-400' :
+              status === 'running' || status === 'dispatched' ? 'text-amber-400' : 'text-white/60';
+  return <span className={`font-semibold text-xs uppercase ${cls}`}>{status}</span>;
 }

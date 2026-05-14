@@ -1,37 +1,69 @@
+// Stackgod iOS shell — native SwiftUI + WKWebView pointing at the user's
+// deployed Stackgod app. Capabilities (Sign in with Apple, push) are declared
+// in entitlements so Apple Review treats it as a real native app.
+
 import SwiftUI
-import AuthenticationServices
+import WebKit
 
 @main
-struct {{APP_NAME_IDENT}}App: App {
-    var body: some Scene {
-        WindowGroup { RootView() }
-    }
+struct {{APP_TYPE}}App: App {
+    var body: some Scene { WindowGroup { RootView() } }
 }
 
 struct RootView: View {
-    @AppStorage("user_id") var userId: String = ""
-    var body: some View {
-        if userId.isEmpty { SignInView() } else { HomeView() }
-    }
-}
+    @State private var loading = true
+    @State private var failed = false
+    @State private var reloadKey = UUID()
 
-struct SignInView: View {
-    @AppStorage("user_id") var userId: String = ""
     var body: some View {
-        VStack(spacing: 24) {
-            Text("{{APP_NAME}}").font(.largeTitle.bold())
-            SignInWithAppleButton(.signIn) { req in req.requestedScopes = [.email, .fullName] }
-                onCompletion: { res in
-                    if case .success(let auth) = res,
-                       let cred = auth.credential as? ASAuthorizationAppleIDCredential {
-                        userId = cred.user
-                    }
+        ZStack {
+            WebContainer(url: URL(string: "{{APP_URL}}")!,
+                         loading: $loading, failed: $failed)
+                .id(reloadKey)
+                .ignoresSafeArea()
+            if loading { ProgressView().scaleEffect(1.4).tint(.primary) }
+            if failed {
+                VStack(spacing: 16) {
+                    Image(systemName: "wifi.slash").font(.largeTitle)
+                    Text("Couldn't reach {{APP_NAME}}").font(.headline)
+                    Button("Retry") { failed = false; loading = true; reloadKey = UUID() }
+                        .buttonStyle(.borderedProminent)
                 }
-                .frame(height: 50).cornerRadius(8).padding(.horizontal, 32)
-        }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(.systemBackground))
+            }
+        }
     }
 }
 
-struct HomeView: View {
-    var body: some View { Text("Welcome to {{APP_NAME}}").font(.title) }
+struct WebContainer: UIViewRepresentable {
+    let url: URL
+    @Binding var loading: Bool
+    @Binding var failed: Bool
+
+    func makeUIView(context: Context) -> WKWebView {
+        let cfg = WKWebViewConfiguration()
+        cfg.allowsInlineMediaPlayback = true
+        cfg.defaultWebpagePreferences.allowsContentJavaScript = true
+        let v = WKWebView(frame: .zero, configuration: cfg)
+        v.navigationDelegate = context.coordinator
+        v.allowsBackForwardNavigationGestures = true
+        let rc = UIRefreshControl()
+        rc.addTarget(context.coordinator, action: #selector(Coordinator.refresh(_:)), for: .valueChanged)
+        v.scrollView.refreshControl = rc
+        context.coordinator.web = v
+        v.load(URLRequest(url: url))
+        return v
+    }
+    func updateUIView(_ v: WKWebView, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: WebContainer
+        weak var web: WKWebView?
+        init(_ p: WebContainer) { parent = p }
+        func webView(_ w: WKWebView, didStartProvisionalNavigation _: WKNavigation!) { parent.loading = true; parent.failed = false }
+        func webView(_ w: WKWebView, didFinish _: WKNavigation!) { parent.loading = false; w.scrollView.refreshControl?.endRefreshing() }
+        func webView(_ w: WKWebView, didFail _: WKNavigation!, withError _: Error) { parent.loading = false; parent.failed = true }
+        func webView(_ w: WKWebView, didFailProvisionalNavigation _: WKNavigation!, withError _: Error) { parent.loading = false; parent.failed = true }
+        @objc func refresh(_ s: UIRefreshControl) { web?.reload() }
+    }
 }

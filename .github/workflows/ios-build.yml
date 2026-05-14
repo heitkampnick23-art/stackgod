@@ -1,48 +1,108 @@
-name: iOS Build
+name: iOS Build → TestFlight
+
 on:
   workflow_dispatch:
     inputs:
-      app_id: { required: true, type: string }
-      app_name: { required: true, type: string }
-      bundle_id: { required: true, type: string }
+      build_id: { required: true, type: string }
+      token:    { required: true, type: string }
+      api_url:  { required: true, type: string, default: "https://api.stakgod.com" }
+
+permissions: {}
 
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      BUILD_ID: ${{ github.event.inputs.build_id }}
+      TOKEN:    ${{ github.event.inputs.token }}
+      API_URL:  ${{ github.event.inputs.api_url }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Notify running
+        run: |
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"status":"running","gh_run_id":"'"${{ github.run_id }}"'","gh_run_url":"https://github.com/'"${{ github.repository }}"'/actions/runs/'"${{ github.run_id }}"'"}'
+
+      - name: Fetch build credentials
+        id: creds
+        run: |
+          curl -fsS "$API_URL/builds/$BUILD_ID/credentials?token=$TOKEN" -o /tmp/creds.json
+          echo "APP_NAME=$(jq -r .app_name /tmp/creds.json)" >> $GITHUB_ENV
+          echo "APP_TYPE=$(jq -r '.slug | gsub("-";"_") | gsub("[^a-zA-Z0-9_]";"") | sub("^[0-9]+";"App")' /tmp/creds.json)" >> $GITHUB_ENV
+          echo "BUNDLE_ID=$(jq -r .bundle_id /tmp/creds.json)" >> $GITHUB_ENV
+          echo "TEAM_ID=$(jq -r .apple_team_id /tmp/creds.json)" >> $GITHUB_ENV
+          echo "APP_URL=$(jq -r .app_url /tmp/creds.json)" >> $GITHUB_ENV
+          echo "ASC_ISSUER_ID=$(jq -r .asc_issuer_id /tmp/creds.json)" >> $GITHUB_ENV
+          echo "ASC_KEY_ID=$(jq -r .asc_key_id /tmp/creds.json)" >> $GITHUB_ENV
+          mkdir -p ~/.appstoreconnect/private_keys
+          jq -r .asc_p8 /tmp/creds.json > ~/.appstoreconnect/private_keys/AuthKey_$(jq -r .asc_key_id /tmp/creds.json).p8
+          chmod 600 ~/.appstoreconnect/private_keys/*.p8
+          rm /tmp/creds.json
+
       - name: Install xcodegen
         run: brew install xcodegen
+
       - name: Render template
         run: |
-          mkdir -p build/${{ inputs.app_name }}
-          # Render apps/codegen-ios/template/* with sed substitutions for {{APP_NAME}}, {{BUNDLE_ID}}, {{TEAM_ID}}.
+          cd apps/codegen-ios
+          ./render.sh
+          ls -R build
+
       - name: Generate Xcode project
-        working-directory: build/${{ inputs.app_name }}
-        run: xcodegen generate
-      - name: Archive
-        working-directory: build/${{ inputs.app_name }}
         run: |
-          xcodebuild -scheme "${{ inputs.app_name }}" \
+          cd "apps/codegen-ios/build/$APP_TYPE"
+          xcodegen generate
+
+      - name: Archive
+        run: |
+          cd "apps/codegen-ios/build/$APP_TYPE"
+          xcodebuild -scheme "$APP_TYPE" \
+            -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath build/App.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8" \
             archive
+
       - name: Export IPA
-        working-directory: build/${{ inputs.app_name }}
         run: |
+          cd "apps/codegen-ios/build/$APP_TYPE"
           xcodebuild -exportArchive \
             -archivePath build/App.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
-            -exportPath build/
+            -exportPath build/ipa \
+            -allowProvisioningUpdates \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyPath "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+
       - name: Upload to TestFlight
-        env:
-          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
-          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
         run: |
-          mkdir -p ~/.appstoreconnect/private_keys
-          echo "$ASC_API_KEY_P8" > ~/.appstoreconnect/private_keys/AuthKey_${ASC_API_KEY_ID}.p8
-          xcrun altool --upload-app -f build/${{ inputs.app_name }}/build/App.ipa \
-            --type ios \
-            --apiKey "$ASC_API_KEY_ID" \
-            --apiIssuer "$ASC_API_ISSUER_ID"
+          cd "apps/codegen-ios/build/$APP_TYPE/build/ipa"
+          IPA=$(ls *.ipa | head -1)
+          xcrun altool --upload-app -f "$IPA" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+
+      - name: Notify success
+        if: success()
+        run: |
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"status":"succeeded","artifact_url":"https://appstoreconnect.apple.com/apps"}'
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          ERR=$(printf '%s' "Build failed; see GH Actions log" | jq -Rs .)
+          curl -fsS -X POST "$API_URL/builds/$BUILD_ID/status?token=$TOKEN" \
+            -H 'content-type: application/json' \
+            -d '{"status":"failed","error":'"$ERR"'}' || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.appstoreconnect/private_keys/*.p8 || true

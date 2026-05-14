@@ -18,6 +18,9 @@ export interface Env {
   RESEND_API_KEY: string;
   SESSION_SECRET: string;
   ENCRYPTION_KEY: string;       // base64(32 bytes) for AES-GCM at-rest encryption
+  BUILD_TOKEN_SECRET: string;   // HMAC for one-time CI build tokens
+  GH_PAT: string;               // fine-grained PAT for workflow_dispatch
+  GH_REPO: string;              // e.g. "heitkampnick23-art/stackgod"
 }
 
 export interface User {

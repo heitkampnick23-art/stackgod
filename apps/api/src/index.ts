@@ -9,6 +9,8 @@ import { domains } from './routes/domains';
 import { apps } from './routes/apps';
 import { mobile } from './routes/mobile';
 import { connect } from './routes/connect';
+import { builds } from './routes/builds';
+import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -35,5 +37,11 @@ app.route('/domains', domains);
 app.route('/apps', apps);
 app.route('/mobile', mobile);
 app.route('/connect', connect);
+app.route('/builds', builds);
 
-export default app;
+export default {
+  fetch: app.fetch,
+  async queue(batch: MessageBatch<BuildMsg>, env: Env): Promise<void> {
+    await handleBuildBatch(batch, env);
+  },
+};
