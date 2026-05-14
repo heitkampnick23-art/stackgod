@@ -2,10 +2,12 @@ import { Hono } from 'hono';
 import type { Env, Variables } from './types';
 import { loadUser } from './middleware/auth';
 import { auth } from './routes/auth';
+import { oauth } from './routes/oauth';
 import { billing } from './routes/billing';
 import { builder } from './routes/builder';
 import { domains } from './routes/domains';
 import { apps } from './routes/apps';
+import { mobile } from './routes/mobile';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -25,9 +27,11 @@ app.use('*', loadUser);
 
 app.get('/', (c) => c.json({ name: 'stackgod-api', ok: true }));
 app.route('/auth', auth);
+app.route('/auth', oauth);
 app.route('/billing', billing);
 app.route('/builder', builder);
 app.route('/domains', domains);
 app.route('/apps', apps);
+app.route('/mobile', mobile);
 
 export default app;
