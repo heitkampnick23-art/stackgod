@@ -1,6 +1,7 @@
 export interface Env {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
+  APPS: R2Bucket;
   SESSIONS: KVNamespace;
   BUILD_QUEUE: Queue;
   APP_URL: string;

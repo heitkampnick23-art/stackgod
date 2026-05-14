@@ -23,7 +23,7 @@ apps.post('/', requireAuth, async (c) => {
   await c.env.DB.prepare(
     `INSERT INTO apps (id, user_id, slug, name, description) VALUES (?, ?, ?, ?, ?)`
   ).bind(id, user.id, slug, name, description ?? null).run();
-  return c.json({ id, slug, name, url: `https://${slug}.stakgod.app` });
+  return c.json({ id, slug, name, url: `https://apps.stakgod.com/${slug}/` });
 });
 
 apps.get('/', requireAuth, async (c) => {

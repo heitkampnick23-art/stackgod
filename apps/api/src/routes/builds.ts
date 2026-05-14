@@ -56,7 +56,7 @@ builds.get('/:id/credentials', async (c) => {
       asc_issuer_id: creds.apple_asc_issuer_id,
       asc_key_id: creds.apple_asc_key_id,
       asc_p8: await decryptString(c.env.ENCRYPTION_KEY, creds.apple_asc_p8_enc),
-      app_url: `https://${app?.slug}.stakgod.app`,
+      app_url: `https://apps.stakgod.com/${app?.slug}/`,
     });
   }
   if (job.kind === 'android') {
@@ -66,7 +66,7 @@ builds.get('/:id/credentials', async (c) => {
       slug: app?.slug,
       package_name: job.bundle_id,
       service_account_json: await decryptString(c.env.ENCRYPTION_KEY, creds.google_play_service_account_enc),
-      app_url: `https://${app?.slug}.stakgod.app`,
+      app_url: `https://apps.stakgod.com/${app?.slug}/`,
     });
   }
   return c.text('unknown kind', 400);

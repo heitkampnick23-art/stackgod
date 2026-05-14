@@ -1,0 +1,13 @@
+name = "stackgod-apps"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+account_id = "4d259cf98fff468b0108b6a80b7a10fc"
+
+# Serves user-built apps at apps.stakgod.com/{slug}/...
+routes = [
+  { pattern = "apps.stakgod.com/*", zone_name = "stakgod.com" }
+]
+
+[[r2_buckets]]
+binding = "APPS"
+bucket_name = "stackgod-apps"

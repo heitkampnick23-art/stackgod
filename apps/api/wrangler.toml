@@ -17,6 +17,10 @@ database_id = "91355169-4ad4-4825-a468-9c830f9dae27"
 binding = "ARTIFACTS"
 bucket_name = "stackgod-artifacts"
 
+[[r2_buckets]]
+binding = "APPS"
+bucket_name = "stackgod-apps"
+
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "749eec723bcc4db1892ede8c1a4b401b"
