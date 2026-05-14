@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Link in Bio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-purple-900 via-fuchsia-800 to-rose-700 min-h-screen text-white">
+<div class="max-w-sm mx-auto p-6 text-center">
+  <div class="size-24 rounded-full bg-white/20 backdrop-blur mx-auto grid place-items-center text-4xl">✨</div>
+  <h1 id="name" class="mt-4 text-2xl font-bold cursor-pointer" title="Click to edit">Your Name</h1>
+  <p id="bio" class="mt-1 text-white/70 text-sm cursor-pointer" title="Click to edit">A short bio. Click to edit.</p>
+
+  <div id="links" class="mt-8 space-y-3"></div>
+
+  <button id="add" class="mt-6 w-full rounded-full bg-white/15 backdrop-blur border border-white/20 py-3 font-semibold hover:bg-white/25">+ Add link</button>
+  <div class="mt-10 text-xs text-white/40">Built with Stackgod</div>
+</div>
+
+<script>
+const PROFILE_KEY = 'profile';
+
+async function loadProfile() {
+  const p = await sg.db.get(PROFILE_KEY);
+  return p || { name: 'Your Name', bio: 'A short bio. Click to edit.' };
+}
+async function saveProfile(p) { await sg.db.put(PROFILE_KEY, p); }
+
+async function loadLinks() {
+  const ids = await sg.db.list('link:');
+  const items = await Promise.all(ids.map(id => sg.db.get(id)));
+  return items.filter(Boolean).sort((a,b) => (a.order||0) - (b.order||0));
+}
+
+async function render() {
+  const p = await loadProfile();
+  document.getElementById('name').textContent = p.name;
+  document.getElementById('bio').textContent = p.bio;
+  const links = await loadLinks();
+  document.getElementById('links').innerHTML = links.map(l => `
+    <div class="flex gap-2">
+      <a href="${l.url}" target="_blank" rel="noreferrer" class="flex-1 block rounded-full bg-white text-stone-900 py-3 font-semibold hover:scale-[1.02] transition">${escapeHtml(l.label)}</a>
+      <button data-id="${l.id}" class="del rounded-full bg-white/15 px-3 hover:bg-white/25">×</button>
+    </div>`).join('');
+}
+
+document.getElementById('name').addEventListener('click', async () => {
+  const p = await loadProfile();
+  const v = prompt('Your name', p.name); if (v) { p.name = v; await saveProfile(p); render(); }
+});
+document.getElementById('bio').addEventListener('click', async () => {
+  const p = await loadProfile();
+  const v = prompt('Bio', p.bio); if (v) { p.bio = v; await saveProfile(p); render(); }
+});
+document.getElementById('add').addEventListener('click', async () => {
+  const label = prompt('Link label (e.g. Twitter)'); if (!label) return;
+  const url = prompt('URL (https://…)'); if (!url) return;
+  const id = 'link:' + crypto.randomUUID();
+  await sg.db.put(id, { id, label, url, order: Date.now() });
+  render();
+});
+document.getElementById('links').addEventListener('click', async e => {
+  const btn = e.target.closest('button.del'); if (!btn) return;
+  await sg.db.del(btn.dataset.id); render();
+});
+
+function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+render();
+</script>
+</body>
+</html>

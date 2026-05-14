@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Habit Tracker</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-b from-amber-50 to-orange-100 min-h-screen text-stone-900">
+<div class="max-w-md mx-auto p-6">
+  <h1 class="text-3xl font-bold">🔥 Habits</h1>
+  <p class="text-stone-500 text-sm mt-1">Build the streak. Don't break the chain.</p>
+
+  <form id="add" class="mt-6 flex gap-2">
+    <input id="name" required maxlength="40" placeholder="Meditate, Read, Code…" class="flex-1 rounded-xl border border-stone-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-orange-400" />
+    <button class="rounded-xl bg-orange-500 text-white font-semibold px-4 py-2 hover:bg-orange-600">Add</button>
+  </form>
+
+  <div id="list" class="mt-6 space-y-2"></div>
+  <div id="empty" class="text-center text-stone-400 mt-12 hidden">No habits yet.</div>
+</div>
+
+<script>
+const todayKey = () => new Date().toISOString().slice(0,10);
+
+async function loadAll() {
+  const keys = await sg.db.list('habit:');
+  return Promise.all(keys.map(k => sg.db.get(k)));
+}
+async function save(h) { await sg.db.put(h.id, h); }
+async function remove(id) { await sg.db.del(id); render(); }
+
+async function checkIn(h) {
+  if (h.lastCheckIn === todayKey()) return;
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+  const ystr = yesterday.toISOString().slice(0,10);
+  h.streak = h.lastCheckIn === ystr ? (h.streak||0) + 1 : 1;
+  h.lastCheckIn = todayKey();
+  await save(h); render();
+}
+
+async function render() {
+  const items = (await loadAll()).filter(Boolean).sort((a,b) => (b.streak||0) - (a.streak||0));
+  const list = document.getElementById('list');
+  document.getElementById('empty').classList.toggle('hidden', items.length > 0);
+  list.innerHTML = items.map(h => `
+    <div class="flex items-center justify-between bg-white rounded-xl p-4 shadow-sm">
+      <div>
+        <div class="font-semibold">${escapeHtml(h.name)}</div>
+        <div class="text-xs text-stone-500">${h.streak||0} day streak${h.lastCheckIn===todayKey()?' ✅':''}</div>
+      </div>
+      <div class="flex gap-2">
+        <button data-act="check" data-id="${h.id}" class="rounded-lg bg-orange-100 text-orange-700 px-3 py-1 text-sm font-semibold hover:bg-orange-200">${h.lastCheckIn===todayKey()?'Done':'Check'}</button>
+        <button data-act="del" data-id="${h.id}" class="rounded-lg bg-stone-100 text-stone-600 px-2 py-1 text-sm hover:bg-stone-200">×</button>
+      </div>
+    </div>`).join('');
+}
+
+document.getElementById('add').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = document.getElementById('name').value.trim();
+  if (!name) return;
+  const id = 'habit:' + crypto.randomUUID();
+  await save({ id, name, streak: 0, lastCheckIn: null, created: Date.now() });
+  e.target.reset();
+  render();
+});
+
+document.getElementById('list').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const id = btn.dataset.id;
+  if (btn.dataset.act === 'del') return remove(id);
+  const h = await sg.db.get(id); if (h) checkIn(h);
+});
+
+function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+render();
+</script>
+</body>
+</html>

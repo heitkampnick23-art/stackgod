@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Tip Jar</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-br from-emerald-100 to-teal-200 min-h-screen text-emerald-900">
+<div class="max-w-md mx-auto p-6">
+  <h1 class="text-3xl font-bold">🪙 Tip Jar</h1>
+  <p class="mt-1 text-emerald-700/80 text-sm">Support my work. Every tip counts.</p>
+
+  <div class="mt-6 bg-white rounded-2xl p-6 shadow-sm">
+    <div class="flex justify-between text-sm text-emerald-700">
+      <span>Raised</span>
+      <span><span id="raised">0</span> / $<span id="goal">500</span></span>
+    </div>
+    <div class="h-3 bg-emerald-100 rounded-full mt-2 overflow-hidden">
+      <div id="bar" class="h-full bg-gradient-to-r from-emerald-500 to-teal-500 transition-all" style="width:0%"></div>
+    </div>
+    <div class="mt-1 text-xs text-emerald-700/70"><span id="tipcount">0</span> tips</div>
+  </div>
+
+  <div class="mt-6 grid grid-cols-3 gap-2">
+    <button data-amt="3" class="tip rounded-xl bg-white py-4 font-semibold hover:bg-emerald-50">$3</button>
+    <button data-amt="10" class="tip rounded-xl bg-white py-4 font-semibold hover:bg-emerald-50">$10</button>
+    <button data-amt="25" class="tip rounded-xl bg-white py-4 font-semibold hover:bg-emerald-50">$25</button>
+  </div>
+  <div class="mt-2">
+    <input id="custom" type="number" min="1" placeholder="Custom amount" class="w-full rounded-xl border border-emerald-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-emerald-500" />
+    <button id="customBtn" class="mt-2 w-full rounded-xl bg-emerald-600 text-white font-semibold py-3 hover:bg-emerald-700">Tip</button>
+  </div>
+
+  <button id="setGoal" class="mt-6 text-xs text-emerald-700/70 underline">Edit goal</button>
+  <div class="mt-1 text-xs text-emerald-700/50">Connect Stripe later. Until then, tips are tracked locally.</div>
+</div>
+
+<script>
+async function getGoal() { return (await sg.db.get('goal')) ?? 500; }
+async function getTips() {
+  const ids = await sg.db.list('tip:');
+  const all = await Promise.all(ids.map(id => sg.db.get(id)));
+  return all.filter(Boolean);
+}
+
+async function render() {
+  const goal = await getGoal();
+  const tips = await getTips();
+  const total = tips.reduce((s,t)=>s+(t.amount||0),0);
+  document.getElementById('raised').textContent = '$' + total;
+  document.getElementById('goal').textContent = goal;
+  document.getElementById('tipcount').textContent = tips.length;
+  document.getElementById('bar').style.width = Math.min(100, (total/goal)*100) + '%';
+}
+
+async function tip(amount) {
+  if (!amount || amount < 1) return;
+  const id = 'tip:' + crypto.randomUUID();
+  await sg.db.put(id, { id, amount, ts: Date.now() });
+  render();
+}
+
+document.querySelectorAll('button.tip').forEach(b => b.addEventListener('click', () => tip(+b.dataset.amt)));
+document.getElementById('customBtn').addEventListener('click', () => {
+  const v = +document.getElementById('custom').value;
+  document.getElementById('custom').value = '';
+  tip(v);
+});
+document.getElementById('setGoal').addEventListener('click', async () => {
+  const v = +(prompt('Goal in dollars', await getGoal()) || 0);
+  if (v > 0) { await sg.db.put('goal', v); render(); }
+});
+render();
+</script>
+</body>
+</html>

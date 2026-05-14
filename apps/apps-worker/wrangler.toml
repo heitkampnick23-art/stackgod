@@ -11,3 +11,7 @@ routes = [
 [[r2_buckets]]
 binding = "APPS"
 bucket_name = "stackgod-apps"
+
+[[kv_namespaces]]
+binding = "APP_DATA"
+id = "69d61efe60e149cbad76e7acc25970fa"

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Join the list</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-stone-950 text-stone-100 min-h-screen">
+<div class="max-w-2xl mx-auto p-8">
+  <h1 class="text-5xl font-extrabold tracking-tight">Get the drop.</h1>
+  <p class="mt-3 text-stone-400 text-lg">One short email a week. No spam. Unsubscribe anytime.</p>
+
+  <form id="signup" class="mt-8 flex gap-2">
+    <input id="email" type="email" required placeholder="you@domain.com" class="flex-1 rounded-full bg-stone-900 border border-stone-800 px-5 py-3 outline-none focus:ring-2 focus:ring-amber-400" />
+    <button class="rounded-full bg-amber-400 text-stone-950 font-bold px-6 hover:bg-amber-300">Join</button>
+  </form>
+  <div id="msg" class="mt-3 text-sm h-5"></div>
+
+  <div class="mt-12 border-t border-stone-800 pt-8">
+    <div class="flex justify-between items-center">
+      <h2 class="font-semibold">Subscribers</h2>
+      <div class="flex gap-2">
+        <span id="count" class="text-stone-500 text-sm">0</span>
+        <button id="export" class="text-amber-400 text-sm hover:underline">Export CSV</button>
+      </div>
+    </div>
+    <ul id="list" class="mt-4 space-y-1 text-sm text-stone-400 max-h-64 overflow-auto"></ul>
+  </div>
+</div>
+
+<script>
+async function getSubs() {
+  const ids = await sg.db.list('sub:');
+  const items = await Promise.all(ids.map(id => sg.db.get(id)));
+  return items.filter(Boolean).sort((a,b) => b.ts - a.ts);
+}
+
+async function render() {
+  const subs = await getSubs();
+  document.getElementById('count').textContent = subs.length + ' joined';
+  document.getElementById('list').innerHTML = subs.map(s => `<li class="flex justify-between"><span>${escapeHtml(s.email)}</span><span class="text-stone-600 text-xs">${new Date(s.ts).toLocaleDateString()}</span></li>`).join('');
+}
+
+document.getElementById('signup').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = document.getElementById('email').value.trim().toLowerCase();
+  if (!email) return;
+  const id = 'sub:' + email;
+  if (await sg.db.get(id)) { msg('You\\u2019re already on the list \\u2728', 'text-stone-400'); return; }
+  await sg.db.put(id, { email, ts: Date.now() });
+  e.target.reset();
+  msg('You\\u2019re in. Welcome.', 'text-emerald-400');
+  render();
+});
+function msg(t, cls) { const el = document.getElementById('msg'); el.textContent = t; el.className = 'mt-3 text-sm h-5 ' + cls; }
+
+document.getElementById('export').addEventListener('click', async () => {
+  const subs = await getSubs();
+  const csv = 'email,joined_at\\n' + subs.map(s => `${s.email},${new Date(s.ts).toISOString()}`).join('\\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'subscribers.csv'; a.click();
+});
+
+function escapeHtml(s){return s.replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+render();
+</script>
+</body>
+</html>

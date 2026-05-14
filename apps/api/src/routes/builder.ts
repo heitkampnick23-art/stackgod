@@ -74,7 +74,10 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
         const html = extractHtml(assembled);
         let deployed_url: string | null = null;
         if (html) {
+          const ts = Date.now();
           await c.env.APPS.put(`apps/${app.slug}/index.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+          // Snapshot for revert. Keys are timestamp-prefixed so list-by-prefix is reverse-chronological.
+          await c.env.APPS.put(`apps/${app.slug}/versions/${ts}.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
           deployed_url = `https://apps.stakgod.com/${app.slug}/`;
           await c.env.DB.prepare(`UPDATE apps SET status='live', updated_at=unixepoch() WHERE id=?`).bind(body.app_id).run();
         }
@@ -127,6 +130,61 @@ builder.post('/deploy', requireAuth, async (c) => {
   return c.json({ ok: true, url: `https://apps.stakgod.com/${app.slug}/` });
 });
 
+// List recent versions for an app (for the "Versions" UI).
+builder.get('/versions', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const appId = c.req.query('app_id');
+  if (!appId) return c.json({ error: 'missing_app_id' }, 400);
+  const app = await c.env.DB.prepare(`SELECT slug FROM apps WHERE id=? AND user_id=?`).bind(appId, user.id).first<{ slug: string }>();
+  if (!app) return c.json({ error: 'not_found' }, 404);
+  const list = await c.env.APPS.list({ prefix: `apps/${app.slug}/versions/`, limit: 50 });
+  const versions = list.objects
+    .map((o) => {
+      const m = o.key.match(/\/versions\/(\d+)\.html$/);
+      return m ? { ts: Number(m[1]), key: o.key, size: o.size } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => (b!.ts - a!.ts));
+  return c.json({ versions });
+});
+
+// Revert to a specific version.
+builder.post('/revert', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const { app_id, ts } = await c.req.json<{ app_id: string; ts: number }>();
+  if (!app_id || !ts) return c.json({ error: 'missing_fields' }, 400);
+  const app = await c.env.DB.prepare(`SELECT slug FROM apps WHERE id=? AND user_id=?`).bind(app_id, user.id).first<{ slug: string }>();
+  if (!app) return c.json({ error: 'not_found' }, 404);
+  const obj = await c.env.APPS.get(`apps/${app.slug}/versions/${ts}.html`);
+  if (!obj) return c.json({ error: 'version_not_found' }, 404);
+  const html = await obj.text();
+  await c.env.APPS.put(`apps/${app.slug}/index.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  // Also snapshot the revert itself so it shows in versions.
+  await c.env.APPS.put(`apps/${app.slug}/versions/${Date.now()}.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  await c.env.DB.prepare(`UPDATE apps SET updated_at=unixepoch() WHERE id=?`).bind(app_id).run();
+  return c.json({ ok: true, url: `https://apps.stakgod.com/${app.slug}/` });
+});
+
+// Fork a template (or any public app) into a new app for the current user.
+builder.post('/fork', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const { template, name } = await c.req.json<{ template: string; name?: string }>();
+  if (!template || !/^[a-z0-9-]{1,64}$/.test(template)) return c.json({ error: 'bad_template' }, 400);
+  const src = await c.env.APPS.get(`apps/${template}/index.html`);
+  if (!src) return c.json({ error: 'template_not_found' }, 404);
+  const html = await src.text();
+
+  const id = crypto.randomUUID();
+  const baseSlug = (name ?? template).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32);
+  const slug = `${baseSlug}-${id.slice(0, 6)}`;
+  await c.env.DB.prepare(
+    `INSERT INTO apps (id, user_id, slug, name, description, status) VALUES (?, ?, ?, ?, ?, 'live')`
+  ).bind(id, user.id, slug, name ?? template, `Forked from ${template}`).run();
+  await c.env.APPS.put(`apps/${slug}/index.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  await c.env.APPS.put(`apps/${slug}/versions/${Date.now()}.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
+  return c.json({ id, slug, url: `https://apps.stakgod.com/${slug}/`, build_url: `https://stakgod.com/build?app=${id}` });
+});
+
 builder.get('/usage', requireAuth, async (c) => {
   const user = c.get('user')!;
   const startOfDay = Math.floor(new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000);
@@ -158,11 +216,28 @@ const SYSTEM_PROMPT = `You are Stackgod, an AI app builder. Each app is ONE self
 
 RULES
 - ALWAYS wrap your final HTML in a fenced \`\`\`html ... \`\`\` block. The platform extracts it from there and deploys to apps.stakgod.com automatically.
-- If a "CURRENT deployed app" was provided, EDIT IT IN PLACE. Re-emit the entire updated file (do not output diffs or partial snippets — we always replace the whole file). Preserve everything the user didn't ask to change.
+- If a "CURRENT deployed app" was provided, EDIT IT IN PLACE. Re-emit the entire updated file. Preserve everything the user didn't ask to change.
 - If this is the first message and no current app exists, generate a complete fresh HTML file.
-- Wire EVERY button — never ship dead UI. Use localStorage for client state. Use modern responsive Tailwind layouts. Mobile-first.
+- Wire EVERY button. Use modern responsive Tailwind layouts. Mobile-first.
 - Brief plain-English summary BEFORE the code block (1-3 sentences max). Then the code block. Nothing after.
-- For data: prefer localStorage. If a real backend is required, mention it but stub with localStorage.
+
+REAL BACKEND — ALWAYS USE \`window.sg.db\` FOR PERSISTENT, MULTI-USER DATA
+The platform auto-injects a tiny SDK into every served app. It's backed by Cloudflare KV scoped to this app, so data persists and is shared across all visitors of this app's URL. Use it for anything beyond ephemeral UI state.
+
+API:
+  await sg.db.put(key, value)        // value is anything JSON-serializable
+  await sg.db.get(key)               // returns the value or null
+  await sg.db.del(key)               // delete
+  await sg.db.list(prefix?)          // returns array of keys (strings)
+
+CHOOSING THE STORE:
+- Single-user transient state (which tab is open, draft text)  → localStorage
+- Anything that should survive a refresh, share across devices, or be visible to other visitors → \`sg.db\`
+- For lists, namespace keys with prefixes (e.g. \`task:abc123\`) so \`sg.db.list('task:')\` works.
+
+EXAMPLE for a habit tracker:
+  async function loadHabits() { const ids = await sg.db.list('habit:'); return Promise.all(ids.map(id => sg.db.get(id))); }
+  async function addHabit(name) { const id = 'habit:' + crypto.randomUUID(); await sg.db.put(id, { id, name, streak: 0, created: Date.now() }); }
 
 OUTPUT TEMPLATE
 {1-3 sentence summary of what changed or what was built}

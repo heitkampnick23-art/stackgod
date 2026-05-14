@@ -10,6 +10,7 @@ import { apps } from './routes/apps';
 import { mobile } from './routes/mobile';
 import { connect } from './routes/connect';
 import { builds } from './routes/builds';
+import { templates } from './routes/templates';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -38,6 +39,7 @@ app.route('/apps', apps);
 app.route('/mobile', mobile);
 app.route('/connect', connect);
 app.route('/builds', builds);
+app.route('/templates', templates);
 
 export default {
   fetch: app.fetch,

@@ -17,6 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
             <Link href="/" className="font-display text-xl tracking-wider"><span className="text-gold">STACK</span>GOD</Link>
             <nav className="hidden md:flex gap-8 text-sm text-white/70">
+              <Link href="/templates" className="hover:text-white">Templates</Link>
               <Link href="/showcase" className="hover:text-white">Showcase</Link>
               <Link href="/pricing" className="hover:text-white">Pricing</Link>
               <Link href="/docs" className="hover:text-white">Docs</Link>
