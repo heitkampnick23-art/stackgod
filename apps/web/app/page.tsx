@@ -48,6 +48,23 @@ export default function Home() {
         <p className="mt-3 text-white/60">Stackgod generates a real native iOS + Android app from your chat and uploads it to TestFlight and Play.</p>
         <Link href="/build" className="btn-primary mt-8">Start free →</Link>
       </section>
+
+      {/* Founders Fund */}
+      <section className="max-w-5xl mx-auto px-6 py-12">
+        <div className="card border-gold/30 ring-1 ring-gold/10">
+          <div className="grid md:grid-cols-[1fr_auto] gap-6 items-center">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-gold">The First 100 Founders Fund</div>
+              <h3 className="font-display text-3xl mt-2">Fund a founder. <span className="text-gold">$99 = 1 app shipped.</span></h3>
+              <p className="mt-2 text-white/70">
+                Apple charges $99/yr. For builders who can&apos;t pay it, that&apos;s the wall. Tip here and we cover their fee — they ship,
+                they earn, they fund the next one. Stackgod takes 0%. Public ledger.
+              </p>
+            </div>
+            <Link href="/support" className="btn-primary whitespace-nowrap">Fund a founder →</Link>
+          </div>
+        </div>
+      </section>
     </>
   );
 }

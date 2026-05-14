@@ -80,7 +80,31 @@ billing.post('/webhook', async (c) => {
   }
 
   switch (event.type) {
-    case 'checkout.session.completed':
+    case 'checkout.session.completed': {
+      const sess = event.data.object as Stripe.Checkout.Session;
+      // Founders Fund tip — record in tips ledger.
+      if (sess.metadata?.kind === 'founders_fund_tip') {
+        const amount = sess.amount_total ?? 0;
+        if (amount > 0) {
+          await c.env.DB.prepare(
+            `INSERT OR IGNORE INTO tips (id, stripe_session_id, amount_cents, currency, supporter_name, supporter_email, message, anonymous)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            crypto.randomUUID(),
+            sess.id,
+            amount,
+            sess.currency ?? 'usd',
+            sess.metadata.supporter_name || null,
+            sess.customer_details?.email ?? null,
+            sess.metadata.message || null,
+            sess.metadata.anonymous === '1' ? 1 : 0,
+          ).run();
+        }
+        break;
+      }
+      // Otherwise: subscription checkout (Hobby/Pro/Studio) — falls through.
+      // intentional fallthrough
+    }
     case 'customer.subscription.updated':
     case 'customer.subscription.created': {
       const obj = event.data.object as Stripe.Checkout.Session | Stripe.Subscription;
