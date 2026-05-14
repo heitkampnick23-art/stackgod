@@ -3,22 +3,23 @@ import Link from 'next/link';
 export default function Home() {
   return (
     <>
-      <section className="glow">
-        <div className="max-w-6xl mx-auto px-6 pt-24 pb-20 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
-            <span className="size-1.5 rounded-full bg-flame" /> Live now — built on Cloudflare
+      <section className="relative glass-stage min-h-[90vh] flex items-center">
+        <div className="hero-bg" aria-hidden />
+        <div className="relative z-10 max-w-6xl mx-auto px-6 pt-24 pb-20 text-center w-full">
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-3 py-1 text-xs text-white/80">
+            <span className="size-1.5 rounded-full bg-flame animate-pulse" /> Live now — built on Cloudflare
           </div>
-          <h1 className="mt-6 font-display text-5xl md:text-7xl leading-tight">
+          <h1 className="mt-6 font-display text-6xl md:text-8xl leading-tight tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
             Speak it. <span className="text-gold">Ship it.</span> Own it.
           </h1>
-          <p className="mt-6 text-lg md:text-xl text-white/70 max-w-2xl mx-auto">
+          <p className="mt-6 text-lg md:text-xl text-white/80 max-w-2xl mx-auto drop-shadow-[0_4px_16px_rgba(0,0,0,0.6)]">
             Describe your app. Stackgod writes it, hosts it, sells subscriptions for you, and ships it to the App Store and Google Play — all in one chat.
           </p>
-          <div className="mt-8 flex gap-4 justify-center">
-            <Link href="/build" className="btn-primary">Start building free</Link>
-            <Link href="/showcase" className="btn-ghost">See it in action</Link>
+          <div className="mt-10 flex gap-4 justify-center">
+            <Link href="/build" className="btn-primary text-lg px-8 py-4">Start building free</Link>
+            <Link href="/showcase" className="btn-ghost text-lg px-8 py-4">See it in action</Link>
           </div>
-          <div className="mt-12 text-xs text-white/40">5 free AI messages a day. No card. Upgrade when you outgrow it.</div>
+          <div className="mt-12 text-xs text-white/50">5 free AI messages a day. No card. Upgrade when you outgrow it.</div>
         </div>
       </section>
 
@@ -37,7 +38,7 @@ export default function Home() {
         <p className="mt-2 text-white/60 max-w-xl">No glue code. Auth, payments, domains, mobile builds, AI — already wired the day you start.</p>
         <div className="mt-8 grid md:grid-cols-4 gap-3 text-sm">
           {STACK.map((s) => (
-            <div key={s} className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3">{s}</div>
+            <div key={s} className="rounded-xl border border-white/10 bg-white/[0.04] backdrop-blur-md px-4 py-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.05)]">{s}</div>
           ))}
         </div>
       </section>
