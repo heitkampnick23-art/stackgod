@@ -289,6 +289,15 @@ Sessions live 30 days. Cookies are scoped per-app (sg_user_{slug}).
     model: 'sonnet'   // 'haiku' (fast/cheap) | 'sonnet' (default) | 'opus' (smart)
   });
 
+  // IMAGE GENERATION (Cloudflare Workers AI Flux Schnell — fast, free-ish, in-region)
+  const { data_url, base64 } = await sg.ai.image({
+    prompt: 'A cozy isometric desk scene with succulents, vibrant pastels',
+    steps: 4,   // 1..8; 4 is the sweet spot
+  });
+  document.querySelector('img').src = data_url;       // base64 JPEG, drop right in <img>
+  // Same builder quota as chat (1 ai_message debit per call). Use for in-app
+  // covers, avatars, hero art, generative backgrounds, mood boards.
+
   // STREAMING (renders tokens as they arrive — use this for chatbot UIs)
   const out = document.querySelector('#bot-reply');
   out.textContent = '';

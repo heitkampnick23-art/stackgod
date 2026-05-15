@@ -25,6 +25,9 @@ binding = "DB"
 database_name = "stackgod"
 database_id = "91355169-4ad4-4825-a468-9c830f9dae27"
 
+[ai]
+binding = "AI"
+
 # secrets set via wrangler secret put NAME
 # ANTHROPIC_API_KEY  (sg.ai)
 # RESEND_API_KEY     (sg.auth magic links)

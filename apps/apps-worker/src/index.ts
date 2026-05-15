@@ -16,6 +16,7 @@ interface Env {
   VAPID_PUBLIC_KEY: string;
   VAPID_PRIVATE_KEY: string;
   VAPID_SUBJECT: string;
+  AI: Ai;
   APP_URL: string;
   APPS_HOST: string;
 }
@@ -458,13 +459,24 @@ async function handleAi(req: Request, env: Env, slug: string, sub: string[]): Pr
 
   if (sub[0] === 'image' && req.method === 'POST') {
     const { prompt, steps } = await req.json<{ prompt: string; steps?: number }>();
-    if (!prompt || prompt.length > 1000) return json({ error: 'bad_prompt' }, 400);
-    // Image gen via Anthropic isn't available; we tell builders to use a backend service.
-    // Placeholder for future Workers AI integration.
-    await env.DB.prepare(
-      `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd) VALUES (?, ?, 'ai_message', ?, 0, 0, 0.003)`
-    ).bind(crypto.randomUUID(), owner.user_id, 'image-placeholder').run();
-    return json({ error: 'image_not_yet_available', hint: 'sg.ai.image is coming soon. Use sg.ai.chat for now.' }, 501);
+    if (!prompt || typeof prompt !== 'string' || prompt.length === 0 || prompt.length > 1000) return json({ error: 'bad_prompt' }, 400);
+    const stepCount = Math.min(8, Math.max(1, steps ?? 4));
+    try {
+      const out = await env.AI.run('@cf/black-forest-labs/flux-1-schnell', { prompt: prompt.slice(0, 1000), steps: stepCount }) as { image?: string };
+      if (!out?.image) return json({ error: 'gen_failed' }, 502);
+      await env.DB.prepare(
+        `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd) VALUES (?, ?, 'ai_message', ?, 0, 0, 0.003)`
+      ).bind(crypto.randomUUID(), owner.user_id, 'flux-1-schnell').run();
+      return json({
+        base64: out.image,
+        data_url: `data:image/jpeg;base64,${out.image}`,
+        mime: 'image/jpeg',
+        model: '@cf/black-forest-labs/flux-1-schnell',
+        steps: stepCount,
+      });
+    } catch (e) {
+      return json({ error: 'gen_failed', detail: String(e).slice(0, 300) }, 502);
+    }
   }
 
   return text('not found', 404);

@@ -130,15 +130,27 @@ function BuildInner() {
     return j.id;
   }
 
-  async function submitElementEdit() {
-    if (!selected || !editPrompt.trim() || streaming) return;
+  async function submitElementEdit(promptOverride?: string, displayOverride?: string) {
+    if (!selected || streaming) return;
+    const prompt = (promptOverride ?? editPrompt).trim();
+    if (!prompt) return;
     const sel = selected;
-    const prompt = editPrompt.trim();
     setSelected(null);
     setEditPrompt('');
     setEditMode(false);
     const wrapped = `Edit ONLY the element matching this CSS selector: \`${sel.selector}\`\n\nCurrent element snippet (for context):\n\`\`\`html\n${sel.html}\n\`\`\`\n\nUser's instruction: ${prompt}`;
-    await sendMessage(wrapped, prompt);
+    await sendMessage(wrapped, displayOverride ?? prompt);
+  }
+
+  function elementQuickAction(kind: 'delete' | 'duplicate' | 'moveUp' | 'moveDown') {
+    const map = {
+      delete:    { p: 'Remove this element entirely.',                   d: '🗑 Delete this' },
+      duplicate: { p: 'Duplicate this element so it appears twice in a row.', d: '📋 Duplicate this' },
+      moveUp:    { p: 'Move this element above its previous sibling.',   d: '⬆️ Move up' },
+      moveDown:  { p: 'Move this element below its next sibling.',       d: '⬇️ Move down' },
+    } as const;
+    const a = map[kind];
+    submitElementEdit(a.p, a.d);
   }
 
   async function send() {
@@ -289,12 +301,18 @@ function BuildInner() {
                 </div>
                 <button onClick={() => { setSelected(null); setEditPrompt(''); }} className="text-white/40 hover:text-white text-xl leading-none shrink-0">×</button>
               </div>
+              <div className="grid grid-cols-4 gap-1.5 mb-2">
+                <button onClick={() => elementQuickAction('delete')}    disabled={streaming} className="rounded-lg bg-white/5 hover:bg-white/10 text-xs py-2 disabled:opacity-50">🗑 Delete</button>
+                <button onClick={() => elementQuickAction('duplicate')} disabled={streaming} className="rounded-lg bg-white/5 hover:bg-white/10 text-xs py-2 disabled:opacity-50">📋 Duplicate</button>
+                <button onClick={() => elementQuickAction('moveUp')}    disabled={streaming} className="rounded-lg bg-white/5 hover:bg-white/10 text-xs py-2 disabled:opacity-50">⬆️ Move up</button>
+                <button onClick={() => elementQuickAction('moveDown')}  disabled={streaming} className="rounded-lg bg-white/5 hover:bg-white/10 text-xs py-2 disabled:opacity-50">⬇️ Move down</button>
+              </div>
               <form onSubmit={(e) => { e.preventDefault(); submitElementEdit(); }} className="flex gap-2">
                 <input
                   autoFocus
                   value={editPrompt}
                   onChange={(e) => setEditPrompt(e.target.value)}
-                  placeholder="Make it red, remove this, add a button below…"
+                  placeholder="Or describe the change: make it red, change copy, add a button below…"
                   className="flex-1 rounded-full bg-white/10 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-flame" />
                 <button type="submit" disabled={!editPrompt.trim() || streaming}
                   className="btn-primary text-sm !px-5 !py-2 disabled:opacity-50">
