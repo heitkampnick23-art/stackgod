@@ -25,22 +25,28 @@ function BuildInner() {
   const params = useSearchParams();
   const initialAppId = params.get('app');
   const forkSlug = params.get('fork');
+  const forkSession = params.get('session_id');
 
-  // Handle ?fork=slug — call /builder/fork then redirect to ?app=newId.
+  // Handle ?fork=slug — call /builder/fork. If 402, redirect to Stripe checkout.
+  // If returning from checkout (?fork=slug&session_id=cs_…), pass session through.
   useEffect(() => {
     if (!forkSlug || initialAppId) return;
     (async () => {
       const r = await fetch(`${API}/builder/fork`, {
         method: 'POST', credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ template: forkSlug }),
+        body: JSON.stringify({ template: forkSlug, session_id: forkSession ?? undefined }),
       });
-      if (r.status === 401) { location.href = `/login?next=/build?fork=${forkSlug}`; return; }
+      if (r.status === 401) { location.href = `/login?next=/build?fork=${forkSlug}${forkSession ? `&session_id=${forkSession}` : ''}`; return; }
+      if (r.status === 402) {
+        const j = await r.json();
+        if (j.checkout_url) { location.href = j.checkout_url; return; }
+      }
       if (!r.ok) return;
       const j = await r.json();
       location.replace(`/build?app=${j.id}`);
     })();
-  }, [forkSlug, initialAppId]);
+  }, [forkSlug, forkSession, initialAppId]);
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState('');

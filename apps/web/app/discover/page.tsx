@@ -11,6 +11,7 @@ interface DApp {
   url: string;
   updated_at: number;
   view_count: number;
+  fork_price_cents?: number;
 }
 
 interface LeaderboardApp { slug: string; name: string; tagline: string | null; url: string; view_count: number; }
@@ -145,7 +146,9 @@ export default function Discover() {
               </div>
               <div className="flex gap-2 mt-auto">
                 <a href={a.url} target="_blank" rel="noreferrer" className="btn-ghost text-xs !py-2 flex-1 text-center">Open ↗</a>
-                <a href={`/build?fork=${a.slug}`} className="btn-primary text-xs !py-2 flex-1 text-center">Remix →</a>
+                <a href={`/build?fork=${a.slug}`} className="btn-primary text-xs !py-2 flex-1 text-center">
+                  {a.fork_price_cents && a.fork_price_cents > 0 ? `Buy $${(a.fork_price_cents / 100).toFixed(0)} →` : 'Remix →'}
+                </a>
               </div>
             </div>
           </div>

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; is_public?: number; tagline?: string | null; }
+interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; is_public?: number; tagline?: string | null; fork_price_cents?: number; }
 interface Usage { messages: number; cost: number; }
 interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; artifact_url: string | null; error: string | null; queued_at: number; }
 
@@ -399,6 +399,27 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
             className="text-xs rounded bg-white/10 px-2 py-1 outline-none focus:ring-1 focus:ring-flame max-w-[55%]" />
         )}
       </div>
+
+      {isPublic && (
+        <div className="mt-2 flex items-center gap-2 text-xs">
+          <span className="text-white/50">💰 Fork price</span>
+          <span className="text-white/30">$</span>
+          <input
+            type="number" min={0} max={500} step={1}
+            defaultValue={app.fork_price_cents ? Math.floor(app.fork_price_cents / 100) : 0}
+            onBlur={async (e) => {
+              const dollars = Math.max(0, Math.min(500, +e.target.value || 0));
+              await fetch(`${API}/builder/apps/${app.id}/fork-price`, {
+                method: 'POST', credentials: 'include',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ price_cents: dollars * 100 }),
+              });
+              onChange();
+            }}
+            className="w-16 rounded bg-white/10 px-2 py-1 outline-none focus:ring-1 focus:ring-flame" />
+          <span className="text-white/40">{app.fork_price_cents ? '· Stakgod takes 20%' : '· Free fork'}</span>
+        </div>
+      )}
 
       {openDomain && (
         <div className="mt-3 pt-3 border-t border-white/10 text-xs">

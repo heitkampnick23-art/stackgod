@@ -6,7 +6,7 @@ import type { Env, Variables } from '../types';
 
 export const discover = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-interface Row { slug: string; name: string; description: string | null; tagline: string | null; custom_domain: string | null; view_count: number; updated_at: number; }
+interface Row { slug: string; name: string; description: string | null; tagline: string | null; custom_domain: string | null; view_count: number; updated_at: number; fork_price_cents: number; }
 
 discover.get('/', async (c) => {
   const cursor = Math.max(0, Number(c.req.query('cursor') ?? '0'));
@@ -18,12 +18,12 @@ discover.get('/', async (c) => {
   const fetchN = sort === 'top' ? 200 : limit + 1;
   const stmt = q
     ? c.env.DB.prepare(
-        `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at
+        `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at, fork_price_cents
          FROM apps WHERE is_public=1 AND status='live' AND lower(name) LIKE ?
          ORDER BY updated_at DESC LIMIT ? OFFSET ?`
       ).bind(`%${q}%`, fetchN, sort === 'top' ? 0 : cursor)
     : c.env.DB.prepare(
-        `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at
+        `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at, fork_price_cents
          FROM apps WHERE is_public=1 AND status='live'
          ORDER BY updated_at DESC LIMIT ? OFFSET ?`
       ).bind(fetchN, sort === 'top' ? 0 : cursor);
@@ -47,6 +47,7 @@ discover.get('/', async (c) => {
     url: a.custom_domain ? `https://${a.custom_domain}/` : `https://apps.stakgod.com/${a.slug}/`,
     updated_at: a.updated_at,
     view_count: a.view_count,
+    fork_price_cents: a.fork_price_cents,
   }));
   return c.json({ apps, next_cursor: hasMore ? cursor + limit : null, sort });
 });
@@ -54,7 +55,7 @@ discover.get('/', async (c) => {
 // Top-10 leaderboard for the Discover hero strip. Cached 60s at the edge.
 discover.get('/leaderboard', async (c) => {
   const r = await c.env.DB.prepare(
-    `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at
+    `SELECT slug, name, description, tagline, custom_domain, view_count, updated_at, fork_price_cents
      FROM apps WHERE is_public=1 AND status='live' LIMIT 200`
   ).all<Row>();
   const rows = r.results ?? [];

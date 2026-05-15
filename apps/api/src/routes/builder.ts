@@ -202,14 +202,94 @@ builder.post('/revert', requireAuth, async (c) => {
 });
 
 // Fork a template (or any public app) into a new app for the current user.
+// If the source app has fork_price_cents > 0 AND a session_id isn't provided,
+// returns 402 with a Stripe Checkout URL routed via the seller's Connect acct
+// (Stakgod takes 20% application_fee). On success Stripe redirects back with
+// session_id, and a second call to /fork verifies + completes the fork.
 builder.post('/fork', requireAuth, async (c) => {
   const user = c.get('user')!;
-  const { template, name } = await c.req.json<{ template: string; name?: string }>();
+  const { template, name, session_id } = await c.req.json<{ template: string; name?: string; session_id?: string }>();
   if (!template || !/^[a-z0-9-]{1,64}$/.test(template)) return c.json({ error: 'bad_template' }, 400);
+
   const src = await c.env.APPS.get(`apps/${template}/index.html`);
   if (!src) return c.json({ error: 'template_not_found' }, 404);
-  const html = await src.text();
 
+  // Look up source app + its price + the seller's Connect account.
+  const source = await c.env.DB.prepare(
+    `SELECT a.id AS app_id, a.user_id, a.fork_price_cents, a.name AS app_name,
+            u.stripe_connect_account_id
+     FROM apps a JOIN users u ON u.id = a.user_id WHERE a.slug=?`
+  ).bind(template).first<{
+    app_id: string; user_id: string; fork_price_cents: number; app_name: string;
+    stripe_connect_account_id: string | null;
+  }>();
+
+  // Templates without an apps row (tpl-* seeded directly to R2) are always free.
+  const price = source?.fork_price_cents ?? 0;
+  let purchase_id: string | null = null;
+  let amount_cents = 0;
+  let fee_cents = 0;
+
+  if (price > 0) {
+    const sellerConnect = source?.stripe_connect_account_id;
+    if (!sellerConnect) {
+      return c.json({ error: 'seller_not_connected', message: 'This app is for sale but the seller has not connected Stripe yet.' }, 412);
+    }
+
+    // No session_id yet → create a Checkout Session and return its URL.
+    if (!session_id) {
+      const fee = Math.floor((price * 2000) / 10_000); // 20%
+      const params = new URLSearchParams();
+      params.set('mode', 'payment');
+      params.set('success_url', `${c.env.APP_URL}/build?fork=${template}&session_id={CHECKOUT_SESSION_ID}`);
+      params.set('cancel_url',  `${c.env.APP_URL}/u/${template}`);
+      params.set('payment_intent_data[application_fee_amount]', String(fee));
+      params.set('customer_email', user.email);
+      params.set('metadata[stakgod_kind]', 'fork_purchase');
+      params.set('metadata[stakgod_template]', template);
+      params.set('metadata[stakgod_buyer]', user.id);
+      params.set('line_items[0][quantity]', '1');
+      params.set('line_items[0][price_data][currency]', 'usd');
+      params.set('line_items[0][price_data][unit_amount]', String(price));
+      params.set('line_items[0][price_data][product_data][name]', `Fork: ${source.app_name}`);
+      params.set('line_items[0][price_data][product_data][description]', `One-time purchase to fork ${template} into your account.`);
+
+      const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`,
+          'content-type': 'application/x-www-form-urlencoded',
+          'stripe-account': sellerConnect,
+        },
+        body: params.toString(),
+      });
+      if (!r.ok) return c.json({ error: 'stripe_failed', detail: (await r.text()).slice(0, 500) }, 502);
+      const s = await r.json<{ id: string; url: string }>();
+      return c.json({ requires_payment: true, price_cents: price, checkout_url: s.url, session_id: s.id }, 402);
+    }
+
+    // session_id present — verify it's paid before forking.
+    if (!/^cs_(live|test)_/.test(session_id)) return c.json({ error: 'bad_session_id' }, 400);
+    const dup = await c.env.DB.prepare(`SELECT id, forked_app_id FROM fork_purchases WHERE stripe_session_id=?`).bind(session_id).first<{ id: string; forked_app_id: string | null }>();
+    if (dup?.forked_app_id) {
+      // Already forked from this session — return the existing app to be idempotent.
+      const ex = await c.env.DB.prepare(`SELECT slug FROM apps WHERE id=?`).bind(dup.forked_app_id).first<{ slug: string }>();
+      if (ex) return c.json({ id: dup.forked_app_id, slug: ex.slug, url: `https://apps.stakgod.com/${ex.slug}/`, build_url: `${c.env.APP_URL}/build?app=${dup.forked_app_id}` });
+    }
+    const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
+      headers: { authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`, 'stripe-account': source.stripe_connect_account_id },
+    });
+    if (!r.ok) return c.json({ error: 'stripe_failed' }, 502);
+    const s = await r.json<{ payment_status: string; amount_total: number; metadata: Record<string, string> }>();
+    if (s.payment_status !== 'paid') return c.json({ error: 'not_paid' }, 402);
+    if (s.metadata?.stakgod_template !== template || s.metadata?.stakgod_buyer !== user.id) return c.json({ error: 'session_mismatch' }, 400);
+    amount_cents = s.amount_total;
+    fee_cents = Math.floor((amount_cents * 2000) / 10_000);
+    purchase_id = crypto.randomUUID();
+  }
+
+  // Do the actual fork.
+  const html = await src.text();
   const id = crypto.randomUUID();
   const baseSlug = (name ?? template).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 32);
   const slug = `${baseSlug}-${id.slice(0, 6)}`;
@@ -218,7 +298,27 @@ builder.post('/fork', requireAuth, async (c) => {
   ).bind(id, user.id, slug, name ?? template, `Forked from ${template}`).run();
   await c.env.APPS.put(`apps/${slug}/index.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
   await c.env.APPS.put(`apps/${slug}/versions/${Date.now()}.html`, html, { httpMetadata: { contentType: 'text/html; charset=utf-8' } });
-  return c.json({ id, slug, url: `https://apps.stakgod.com/${slug}/`, build_url: `https://stakgod.com/build?app=${id}` });
+
+  if (purchase_id && source) {
+    await c.env.DB.prepare(
+      `INSERT INTO fork_purchases (id, source_app_id, source_user_id, buyer_user_id, forked_app_id, amount_cents, application_fee_cents, stripe_session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(purchase_id, source.app_id, source.user_id, user.id, id, amount_cents, fee_cents, session_id ?? null).run();
+  }
+
+  return c.json({ id, slug, url: `https://apps.stakgod.com/${slug}/`, build_url: `${c.env.APP_URL}/build?app=${id}` });
+});
+
+// Set the fork price (in cents). 0 = free fork.
+builder.post('/apps/:id/fork-price', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const id = c.req.param('id');
+  const { price_cents } = await c.req.json<{ price_cents: number }>();
+  const cents = Math.max(0, Math.min(50_000, Math.floor(Number(price_cents) || 0)));
+  if (cents > 0 && cents < 100) return c.json({ error: 'min_price', detail: 'minimum $1.00 (100 cents) to cover Stripe fees' }, 400);
+  const r = await c.env.DB.prepare(`UPDATE apps SET fork_price_cents=? WHERE id=? AND user_id=?`).bind(cents, id, user.id).run();
+  if (!r.success || r.meta.changes === 0) return c.json({ error: 'not_found' }, 404);
+  return c.json({ ok: true, fork_price_cents: cents });
 });
 
 builder.get('/usage', requireAuth, async (c) => {
