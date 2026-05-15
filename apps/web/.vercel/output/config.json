@@ -135,7 +135,7 @@
       "handle": "hit"
     },
     {
-      "src": "/_next/static/(?:[^/]+/pages|pages|chunks|runtime|css|image|media|bx5gyAP19xYIV4dotjd2\\-)/.+",
+      "src": "/_next/static/(?:[^/]+/pages|pages|chunks|runtime|css|image|media|T9t2Hj5IMbowrT8GL_i_f)/.+",
       "headers": {
         "cache-control": "public,max-age=31536000,immutable"
       },

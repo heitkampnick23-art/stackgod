@@ -27,6 +27,7 @@ export interface Env {
   GH_PAT: string;               // fine-grained PAT for workflow_dispatch
   GH_REPO: string;              // e.g. "heitkampnick23-art/stackgod"
   BUILD_ROOM: DurableObjectNamespace;
+  ADMIN_EMAILS?: string;        // comma-separated list of admin emails
 }
 
 export interface User {

@@ -19,6 +19,7 @@ import { appDomain } from './routes/app-domain';
 import { discover } from './routes/discover';
 import { stats } from './routes/stats';
 import { changelog } from './routes/changelog';
+import { admin } from './routes/admin';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 export { BuildRoom } from './do/build-room';
 
@@ -57,6 +58,7 @@ app.route('/templates', templates);
 app.route('/tips', tips);
 app.route('/stats', stats);
 app.route('/changelog', changelog);
+app.route('/admin', admin);
 
 export default {
   fetch: app.fetch,
