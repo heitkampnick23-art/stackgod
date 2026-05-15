@@ -27,6 +27,7 @@ function BuildInner() {
   const initialAppId = params.get('app');
   const forkSlug = params.get('fork');
   const forkSession = params.get('session_id');
+  const initialPrompt = params.get('prompt');
 
   // Handle ?fork=slug — call /builder/fork. If 402, redirect to Stripe checkout.
   // If returning from checkout (?fork=slug&session_id=cs_…), pass session through.
@@ -50,7 +51,7 @@ function BuildInner() {
   }, [forkSlug, forkSession, initialAppId]);
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(initialPrompt ?? '');
   const [streaming, setStreaming] = useState(false);
   const [appId, setAppId] = useState<string | null>(initialAppId);
   const [usage, setUsage] = useState<{ messages: number } | null>(null);

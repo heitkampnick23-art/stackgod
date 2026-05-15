@@ -93,8 +93,8 @@ export default function Dashboard() {
       </div>
 
       <h2 className="font-display text-2xl mt-12">Your apps</h2>
+      {apps.length === 0 && <EmptyState />}
       <div className="mt-4 grid md:grid-cols-3 gap-4">
-        {apps.length === 0 && <div className="card text-white/50">No apps yet. <Link href="/build" className="text-flame">Start building →</Link></div>}
         {apps.map((a) => (
           <AppCard
             key={a.id}
@@ -132,6 +132,42 @@ export default function Dashboard() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function EmptyState() {
+  const ideas = [
+    { emoji: '✅', label: 'Habit tracker',  prompt: 'A clean habit tracker with daily streaks, sign-in, and a weekly progress chart' },
+    { emoji: '💸', label: 'Pricing page',   prompt: 'A modern SaaS pricing page with three tiers, monthly/annual toggle, and Stripe checkout' },
+    { emoji: '🍳', label: 'Recipe vault',   prompt: 'A recipe vault where I can save, search, and tag recipes with photo uploads' },
+    { emoji: '🧠', label: 'Flashcards',     prompt: 'A spaced-repetition flashcards app with decks, sign-in, and a daily review queue' },
+    { emoji: '📅', label: 'Booking page',   prompt: 'A booking page where clients pick a 30-min slot, pay $50, and get a confirmation email' },
+    { emoji: '🎨', label: 'Portfolio',      prompt: 'A minimal portfolio site with a hero, project grid, about section, and contact form' },
+  ];
+  return (
+    <div className="mt-4 card !p-8 border-flame/30 bg-gradient-to-br from-flame/10 via-transparent to-gold/5">
+      <div className="text-center max-w-2xl mx-auto">
+        <div className="text-5xl mb-3">🔥</div>
+        <h3 className="font-display text-3xl">Build your first app</h3>
+        <p className="mt-2 text-white/70">Type what you want. Watch it appear in ~10 seconds. Click any element to change it.</p>
+        <Link href="/build" className="btn-primary mt-5 inline-block">Open the builder →</Link>
+      </div>
+      <div className="mt-8 pt-6 border-t border-white/10">
+        <div className="text-xs uppercase tracking-wider text-white/50 text-center mb-3">Or start from an idea</div>
+        <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2">
+          {ideas.map((i) => (
+            <Link key={i.label} href={`/build?prompt=${encodeURIComponent(i.prompt)}`}
+              className="card !p-3 hover:border-flame/40 transition flex items-start gap-3 text-left">
+              <div className="text-2xl shrink-0">{i.emoji}</div>
+              <div className="min-w-0">
+                <div className="font-semibold text-sm">{i.label}</div>
+                <div className="text-xs text-white/50 mt-0.5 line-clamp-2">{i.prompt}</div>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

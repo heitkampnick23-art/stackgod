@@ -4,16 +4,32 @@ Pre-written copy for every channel, ready to paste. Replace `[demo gif/video URL
 
 ---
 
-## Day 0 (night before launch) — checklist
+## 🚨 T-12hr final checklist (do these tonight)
 
-- [ ] Record 30-second demo video (script below)
-- [ ] Upload demo to YouTube unlisted + Loom for embeds
-- [ ] Check `https://stakgod.com/api/og?title=Test&subtitle=Test` returns the OG image
-- [ ] Test the share flow end-to-end (sign up via incognito → build app → ship)
-- [ ] Confirm CF Bot Fight Mode is ON
-- [ ] Confirm Stripe LIVE mode shows your account
-- [ ] Schedule Product Hunt for 12:01 AM PT (sign in to producthunt.com → Submit → Schedule)
-- [ ] Find a "hunter" with PH karma to post (DM 3-5 the day before)
+**Run-on-Nick (you):**
+- [ ] **Apply migration 008** so digest cron actually runs Monday:
+      ```bash
+      cd apps/api && npx wrangler d1 execute stackgod --remote --file=../../infra/d1/migrations/008_email_digest.sql
+      ```
+- [ ] **Record 30-second demo** (script below). Phone screen-record is fine. Save to `apps/web/public/demo.mp4`.
+- [ ] **Flip 5 CF security toggles** (Bot Fight, BIC, Always-HTTPS, Min TLS 1.2, Email Obfuscation) — dash.cloudflare.com → stakgod.com → Security
+- [ ] **Schedule Product Hunt for 12:01am PT** with copy from this doc
+- [ ] **Find a hunter** with PH karma (DM 3-5 today, only one will say yes)
+- [ ] **Sign-up sanity test in incognito** → /build → ship something → Discover shows it
+- [ ] **Confirm Stripe shows LIVE mode** + a test webhook fired this week (Dashboard → Developers → Webhooks)
+- [ ] **Pin tweet** announcing tomorrow's launch with a teaser GIF
+
+**Already shipped, no action needed:**
+- ✅ Press kit live at /press (logos, boilerplate, founder bio, screenshots, story angles)
+- ✅ Per-app OG images auto-generated (every share has a real preview card)
+- ✅ Dashboard empty state with 6 prompt suggestions for new sign-ups
+- ✅ 🔥 Trending badge on Discover for ≥10 views/24h (social proof loop)
+- ✅ Welcome email on first sign-up (drives 7-day retention)
+- ✅ Weekly builder digest cron (fires Mondays, needs migration 008)
+- ✅ SSR /discover (search engines see real content)
+- ✅ /build accepts ?prompt= for prefilled ideas
+- ✅ Real-time multi-cursor collab via Durable Objects
+- ✅ All 16 sg.* SDK primitives auto-injected into shipped apps
 
 ## Day 1 morning — sequence
 
