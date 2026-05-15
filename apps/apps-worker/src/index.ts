@@ -114,6 +114,9 @@ async upload(file,opts){const fd=new FormData();fd.append('file',file,(opts&&opt
 uploads:{
 list:()=>J('/uploads'),
 del:k=>J('/uploads?key='+encodeURIComponent(k),{method:'DELETE'}),
+},
+email:{
+send:o=>J('/email/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -140,6 +143,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'ai')       return handleAi(req, env, slug, sub.slice(1));
   if (sub[0] === 'payments') return handlePayments(req, env, slug, sub.slice(1));
   if (sub[0] === 'uploads')  return handleUploads(req, env, slug);
+  if (sub[0] === 'email')    return handleEmail(req, env, slug, sub.slice(1));
   return text('not found', 404);
 }
 
@@ -483,6 +487,82 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.email ----------
+//
+// Transactional emails via Resend (our verified stakgod.com domain).
+// Charged to the BUILDER's daily quota; counted in usage_events as 'email_send'.
+
+interface EmailBody { to: string | string[]; subject: string; html?: string; text?: string; reply_to?: string; from_name?: string; }
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const DAILY_EMAIL_LIMITS = { free: 10, hobby: 100, pro: 1000, studio: 10000 } as const;
+const MAX_EMAIL_BODY = 200_000; // bytes
+const MAX_RECIPIENTS = 20;
+
+async function handleEmail(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
+  if (sub[0] !== 'send' || req.method !== 'POST') return text('not found', 404);
+
+  const owner = await env.DB.prepare(
+    `SELECT u.id, u.plan, u.email FROM apps a JOIN users u ON u.id=a.user_id WHERE a.slug=?`
+  ).bind(slug).first<{ id: string; plan: 'free' | 'hobby' | 'pro' | 'studio'; email: string }>();
+  if (!owner) return json({ error: 'app_not_found' }, 404);
+
+  const startOfDay = Math.floor(new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000);
+  const usage = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM usage_events WHERE user_id=? AND kind='email_send' AND ts>=?`
+  ).bind(owner.id, startOfDay).first<{ n: number }>();
+  const limit = DAILY_EMAIL_LIMITS[owner.plan];
+  if ((usage?.n ?? 0) >= limit) {
+    return json({ error: 'builder_email_quota_exceeded', used: usage?.n, limit, message: `This app's owner has hit their ${limit}/day email quota. Have them upgrade at ${env.APP_URL}/pricing.` }, 402);
+  }
+
+  const body = await req.json<EmailBody>();
+  const tos = (Array.isArray(body.to) ? body.to : [body.to]).map((s) => String(s).trim().toLowerCase()).filter(Boolean);
+  if (tos.length === 0 || tos.length > MAX_RECIPIENTS) return json({ error: 'invalid_recipients', max: MAX_RECIPIENTS }, 400);
+  for (const t of tos) if (!EMAIL_RE.test(t)) return json({ error: 'invalid_recipient', detail: t }, 400);
+  const subject = String(body.subject ?? '').slice(0, 200);
+  if (!subject) return json({ error: 'missing_subject' }, 400);
+  const html = body.html ? String(body.html).slice(0, MAX_EMAIL_BODY) : undefined;
+  const txt  = body.text ? String(body.text).slice(0, MAX_EMAIL_BODY) : undefined;
+  if (!html && !txt) return json({ error: 'missing_body' }, 400);
+
+  const fromName = (body.from_name ?? slug).replace(/[^\w .-]/g, '').slice(0, 80) || slug;
+  const fromAddr = `${fromName} <noreply@stakgod.com>`;
+  const replyTo  = body.reply_to && EMAIL_RE.test(body.reply_to) ? body.reply_to : owner.email;
+
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: fromAddr,
+      to: tos,
+      subject,
+      ...(html ? { html: appendFooter(html, slug) } : {}),
+      ...(txt  ? { text: appendFooterText(txt, slug) } : {}),
+      reply_to: replyTo,
+      headers: { 'X-Stakgod-App': slug, 'X-Stakgod-Owner': owner.id },
+      tags: [{ name: 'sg_app', value: slug }],
+    }),
+  });
+  if (!r.ok) {
+    const detail = (await r.text()).slice(0, 800);
+    return json({ error: 'send_failed', detail }, 502);
+  }
+  const data = await r.json<{ id: string }>();
+  await env.DB.prepare(
+    `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd) VALUES (?, ?, 'email_send', ?, ?, 0, 0.0004)`
+  ).bind(crypto.randomUUID(), owner.id, slug, tos.length).run();
+  return json({ id: data.id, sent: tos.length });
+}
+
+function appendFooter(html: string, slug: string): string {
+  const f = `<hr style="border:none;border-top:1px solid #e5e5e5;margin:24px 0"/><p style="font:12px/1.4 system-ui,Arial;color:#999">Sent via <a href="https://stakgod.com/?utm_source=email&amp;utm_campaign=${slug}" style="color:#999">Stakgod</a> &middot; <a href="https://stakgod.com/build?fork=${slug}" style="color:#999">Remix this app</a></p>`;
+  if (html.includes('</body>')) return html.replace('</body>', f + '</body>');
+  return html + f;
+}
+function appendFooterText(txt: string, slug: string): string {
+  return txt + `\n\n— Sent via Stakgod (https://stakgod.com)\nRemix: https://stakgod.com/build?fork=${slug}`;
 }
 
 // ---------- sg.upload ----------

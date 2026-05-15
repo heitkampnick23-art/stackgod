@@ -286,6 +286,21 @@ of this app pays for usage out of their plan's monthly_messages quota — when
 they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
 display ('Have the owner upgrade at stakgod.com/pricing').
 
+────  sg.email  ────  Transactional emails sent from your app via Resend (verified stakgod.com).
+  await sg.email.send({
+    to: 'recipient@example.com',          // or array of up to 20
+    subject: 'Welcome to my app',
+    html: '<h1>Hello!</h1><p>Thanks for joining.</p>',
+    text: 'Hello! Thanks for joining.',   // optional plaintext fallback
+    from_name: 'My Cool App',             // optional display name; sender stays noreply@stakgod.com
+    reply_to: 'me@mydomain.com',          // optional; defaults to the BUILDER's email
+  });
+
+Charged to the BUILDER's daily quota: free 10/day, hobby 100, pro 1k, studio
+10k. Returns 402 when exceeded with a friendly upgrade message. Body capped
+at ~200 KB; subject 200 chars. Auto-appends a small "Sent via Stakgod"
+footer (counts as a viral surface like the badge on served apps).
+
 ────  sg.upload  ────  Real file uploads to per-app R2 with public URLs.
 
   // From a <input type="file"> change handler:
