@@ -44,9 +44,18 @@ cp "$SRC/app/src/main/res/values/themes.xml" "$OUT/app/src/main/res/values/theme
 mkdir -p "$OUT/app/src/main/res/xml"
 cp "$SRC/app/src/main/res/xml/network_security_config.xml" "$OUT/app/src/main/res/xml/network_security_config.xml"
 
-# Generate plain pixel-art launcher icons so the AAB doesn't fail at submit.
-# Solid Stakgod-orange square PNGs at standard mipmap densities.
-make_icon() {
+# Launcher icons: try to download the AI-generated icon from apps.stakgod.com
+# and resize via ImageMagick. Fall back to a solid flame square if download or
+# convert is unavailable.
+ICON_URL="${ICON_URL:-${APP_URL%/}/icon.png}"
+SRC_ICON="$(mktemp -t stakgod-icon-XXXXXX).png"
+HAS_REAL_ICON=0
+if curl -fsSL --max-time 30 "$ICON_URL" -o "$SRC_ICON" 2>/dev/null && command -v convert >/dev/null 2>&1; then
+  HAS_REAL_ICON=1
+  echo "icon: downloaded from $ICON_URL, will resize via ImageMagick"
+fi
+
+flame_square() {
   local out="$1" size="$2"
   python3 - "$out" "$size" <<'PY'
 import sys, struct, zlib
@@ -62,11 +71,20 @@ iend = chunk(b'IEND', b'')
 open(path,'wb').write(sig+ihdr+idat+iend)
 PY
 }
+make_icon() {
+  local out="$1" size="$2"
+  if [ "$HAS_REAL_ICON" = "1" ]; then
+    convert "$SRC_ICON" -resize "${size}x${size}^" -gravity center -extent "${size}x${size}" "$out"
+  else
+    flame_square "$out" "$size"
+  fi
+}
 for d in mdpi:48 hdpi:72 xhdpi:96 xxhdpi:144 xxxhdpi:192; do
   density="${d%:*}"; size="${d#*:}"
   mkdir -p "$OUT/app/src/main/res/mipmap-$density"
   make_icon "$OUT/app/src/main/res/mipmap-$density/ic_launcher.png"       "$size"
   make_icon "$OUT/app/src/main/res/mipmap-$density/ic_launcher_round.png" "$size"
 done
+rm -f "$SRC_ICON"
 
 echo "rendered $OUT"

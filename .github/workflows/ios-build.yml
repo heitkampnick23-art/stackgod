@@ -44,6 +44,7 @@ jobs:
 
       - name: Install xcodegen
         run: brew install xcodegen
+        # sips ships with macOS — used by render.sh to strip alpha from AppIcon
 
       - name: Render template
         run: |

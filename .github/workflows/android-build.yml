@@ -67,6 +67,9 @@ jobs:
           echo "KEYSTORE_FILE=$(pwd)/apps/codegen-android/upload.jks" >> $GITHUB_ENV
           echo "KEY_ALIAS=upload" >> $GITHUB_ENV
 
+      - name: Install ImageMagick (for downscaling AI app icon)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq imagemagick
+
       - name: Render template
         run: ./apps/codegen-android/render.sh
 
