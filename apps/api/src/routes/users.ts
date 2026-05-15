@@ -98,6 +98,44 @@ users.post('/me', requireAuth, async (c) => {
   return c.json({ ok: true });
 });
 
+// Single public app under a builder's handle. 404 if app isn't public.
+users.get('/:handle/apps/:slug', async (c) => {
+  const handleParam = c.req.param('handle').toLowerCase();
+  const slug = c.req.param('slug').toLowerCase();
+  if (!HANDLE_RE.test(handleParam) || !/^[a-z0-9-]{1,64}$/.test(slug)) return c.json({ error: 'invalid' }, 400);
+
+  const row = await c.env.DB.prepare(
+    `SELECT a.slug, a.name, a.description, a.tagline, a.custom_domain, a.view_count,
+            a.created_at, a.updated_at, a.fork_price_cents,
+            u.id AS user_id, u.handle, u.name AS builder_name, u.avatar_url AS builder_avatar, u.bio
+     FROM apps a JOIN users u ON u.id=a.user_id
+     WHERE u.handle=? AND a.slug=? AND a.is_public=1 AND a.status='live'`
+  ).bind(handleParam, slug).first<{
+    slug: string; name: string; description: string | null; tagline: string | null;
+    custom_domain: string | null; view_count: number; created_at: number; updated_at: number;
+    fork_price_cents: number; user_id: string; handle: string;
+    builder_name: string | null; builder_avatar: string | null; bio: string | null;
+  }>();
+  if (!row) return c.json({ error: 'not_found' }, 404);
+
+  const liveViews = await c.env.APP_DATA.get(`appviews:${slug}:total`);
+  return c.json({
+    app: {
+      slug: row.slug, name: row.name,
+      tagline: row.tagline || row.description,
+      description: row.description,
+      url: row.custom_domain ? `https://${row.custom_domain}/` : `https://apps.stakgod.com/${row.slug}/`,
+      icon_url: `https://apps.stakgod.com/${row.slug}/icon.png`,
+      view_count: Number(liveViews ?? row.view_count ?? 0),
+      created_at: row.created_at, updated_at: row.updated_at,
+      fork_price_cents: row.fork_price_cents,
+    },
+    builder: {
+      handle: row.handle, name: row.builder_name, avatar_url: row.builder_avatar, bio: row.bio,
+    },
+  });
+});
+
 users.get('/:handle', async (c) => {
   const handleParam = c.req.param('handle').toLowerCase();
   if (!HANDLE_RE.test(handleParam)) return c.json({ error: 'invalid_handle' }, 400);
