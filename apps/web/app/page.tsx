@@ -49,6 +49,39 @@ export default function Home() {
         <Link href="/build" className="btn-primary mt-8">Start free →</Link>
       </section>
 
+      {/* Compare */}
+      <section className="max-w-6xl mx-auto px-6 py-16">
+        <div className="text-center max-w-2xl mx-auto">
+          <h2 className="font-display text-3xl md:text-5xl">The receipts.</h2>
+          <p className="mt-3 text-white/60">Other AI app builders give you a chat box. Stakgod gives you a chat box <em>and</em> a real BaaS stack baked into every app you ship.</p>
+        </div>
+        <div className="mt-10 card !p-0 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead className="bg-white/5">
+              <tr className="text-left">
+                <th className="p-4"></th>
+                <th className="p-4 text-center"><span className="text-flame">STAK</span><span className="text-white">GOD</span></th>
+                <th className="p-4 text-center text-white/50">Lovable</th>
+                <th className="p-4 text-center text-white/50">Bolt</th>
+                <th className="p-4 text-center text-white/50">Hercules</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {COMPARE.map((row) => (
+                <tr key={row.label}>
+                  <td className="p-4 text-white/80">{row.label}</td>
+                  <td className="p-4 text-center font-bold text-emerald-400">{row.us}</td>
+                  <td className="p-4 text-center text-white/40">{row.lovable}</td>
+                  <td className="p-4 text-center text-white/40">{row.bolt}</td>
+                  <td className="p-4 text-center text-white/40">{row.hercules}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-4 text-xs text-white/40 text-center">Compared from each platform&apos;s public docs as of {new Date().toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}. Open a PR if anything&apos;s wrong: <a href="https://github.com/heitkampnick23-art/stackgod" className="text-flame underline">github.com/.../stackgod</a></p>
+      </section>
+
       {/* Founders Fund */}
       <section className="max-w-5xl mx-auto px-6 py-12">
         <div className="card border-gold/30 ring-1 ring-gold/10">
@@ -79,3 +112,25 @@ const FEATURES = [
 ];
 
 const STACK = ['Cloudflare Pages', 'Workers', 'D1 Postgres', 'R2 Storage', 'Queues', 'KV', 'Workers AI', 'Durable Objects', 'Stripe Connect', 'Apple Sign In', 'Google Sign In', 'Resend Email', 'Anthropic Claude', 'CF Registrar', 'GitHub Actions', 'TestFlight'];
+
+const COMPARE: Array<{ label: string; us: string; lovable: string; bolt: string; hercules: string }> = [
+  { label: 'Backend primitives baked into every shipped app',         us: '16',         lovable: '0 (BYO Supabase)', bolt: '0 (BYO)',  hercules: '~5' },
+  { label: 'Auth (magic link / Apple / Google)',                       us: '✓ + per-app SDK', lovable: 'BYO',         bolt: 'BYO',      hercules: '✓' },
+  { label: 'Real database for shipped apps (sg.db)',                   us: '✓ KV-backed',    lovable: 'BYO Supabase', bolt: 'BYO',     hercules: '✓' },
+  { label: 'In-app Claude (chat / stream / image)',                    us: '✓',         lovable: '✗',              bolt: '✗',         hercules: '✗' },
+  { label: 'Stripe Checkout one-liner (sg.payments)',                  us: '✓',         lovable: '✗',              bolt: '✗',         hercules: '✓' },
+  { label: 'File uploads → public URLs (sg.upload)',                   us: '✓',         lovable: 'BYO',            bolt: 'BYO',       hercules: '✓' },
+  { label: 'Transactional email (sg.email)',                           us: '✓ Resend',  lovable: 'BYO',            bolt: 'BYO',       hercules: '✓' },
+  { label: 'Server-sent web push (RFC-8291)',                          us: '✓',         lovable: '✗',              bolt: '✗',         hercules: '✗' },
+  { label: 'Cron + delayed-job queue',                                 us: '✓ both',    lovable: '✗',              bolt: '✗',         hercules: '✗' },
+  { label: 'Geo data per visitor (sg.geo)',                            us: '✓',         lovable: '✗',              bolt: '✗',         hercules: '✗' },
+  { label: 'Multi-modal: drop screenshots Claude reads',               us: '✓',         lovable: '✓',              bolt: '✓',         hercules: '✗' },
+  { label: 'Click-to-edit visual editor',                              us: '✓ + 4 quick actions', lovable: '✓',     bolt: '✗',        hercules: '✗' },
+  { label: 'Custom domains',                                           us: '✓ in 1 click', lovable: '✓',           bolt: 'BYO',      hercules: '✓' },
+  { label: 'Ship to App Store + Play (real native, real submit)',      us: '✓',         lovable: '✗',              bolt: '✗',         hercules: '✓' },
+  { label: 'AI-generated app icons (auto)',                            us: '✓ Flux',    lovable: '✗',              bolt: '✗',         hercules: '✗' },
+  { label: 'Public discovery + remix flywheel',                        us: '✓',         lovable: '✓',              bolt: '✗',         hercules: '✗' },
+  { label: 'Marketplace: builders sell paid forks',                    us: '✓ 80% / 20%', lovable: '✗',            bolt: '✗',         hercules: '✗' },
+  { label: 'Open source',                                              us: '✓ MIT',     lovable: '✗',              bolt: 'partial',   hercules: '✗' },
+  { label: 'Free tier',                                                us: '5 msgs/day', lovable: 'limited',       bolt: 'tokens',    hercules: 'generous' },
+];
