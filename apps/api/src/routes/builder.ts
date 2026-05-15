@@ -286,6 +286,20 @@ of this app pays for usage out of their plan's monthly_messages quota — when
 they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
 display ('Have the owner upgrade at stakgod.com/pricing').
 
+────  sg.geo  ────  Visitor's location from Cloudflare (no setup, no IP geolocation library).
+  const g = await sg.geo();
+  // → { country: 'US', region: 'CA', city: 'San Francisco', postal: '94110',
+  //     timezone: 'America/Los_Angeles', lat: 37.76, lon: -122.41, continent: 'NA' }
+Use for currency selection, language defaults, weather/news/regional content,
+fraud signals, "near me" UX. No permission prompt — it's edge-derived from the
+visitor's IP (privacy: city-level granularity, not GPS-precise).
+
+────  sg.notify  ────  Browser-native notifications (no server setup).
+  await sg.notify.show('Streak saved!', { body: '12 days strong 🔥', icon: '/icon.png' });
+  // First call asks permission. Subsequent calls show silently.
+  // sg.notify.ask() to request permission separately.
+Web push (server-sent, even when tab is closed) lands in a future release.
+
 ────  sg.email  ────  Transactional emails sent from your app via Resend (verified stakgod.com).
   await sg.email.send({
     to: 'recipient@example.com',          // or array of up to 20

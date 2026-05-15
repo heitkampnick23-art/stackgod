@@ -117,6 +117,11 @@ del:k=>J('/uploads?key='+encodeURIComponent(k),{method:'DELETE'}),
 },
 email:{
 send:o=>J('/email/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
+},
+geo:()=>J('/geo'),
+notify:{
+async ask(){if(!('Notification'in window))return 'unsupported';if(Notification.permission==='granted')return 'granted';if(Notification.permission==='denied')return 'denied';return await Notification.requestPermission();},
+async show(title,opts){if(!('Notification'in window))return false;if(Notification.permission!=='granted'){const p=await this.ask();if(p!=='granted')return false;}new Notification(title,opts||{});return true;},
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -144,6 +149,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'payments') return handlePayments(req, env, slug, sub.slice(1));
   if (sub[0] === 'uploads')  return handleUploads(req, env, slug);
   if (sub[0] === 'email')    return handleEmail(req, env, slug, sub.slice(1));
+  if (sub[0] === 'geo')      return handleGeo(req);
   return text('not found', 404);
 }
 
@@ -487,6 +493,28 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.geo ----------
+//
+// Cloudflare adds geo headers to every request for free; we just relay them.
+// No PII beyond what's already public from the user's IP. Privacy: we don't
+// log, just pass through.
+
+function handleGeo(req: Request): Response {
+  const h = req.headers;
+  const cf = (req as unknown as { cf?: Record<string, unknown> }).cf ?? {};
+  const get = (k: string) => h.get(k) ?? (cf[k.replace(/^cf-/i, '').replace(/-/g, '_')] as string | undefined) ?? null;
+  return json({
+    country:  h.get('cf-ipcountry') ?? cf.country ?? null,
+    region:   get('cf-region')      ?? cf.region    ?? null,
+    city:     get('cf-city')        ?? cf.city      ?? null,
+    postal:   get('cf-postal-code') ?? cf.postalCode ?? null,
+    timezone: get('cf-timezone')    ?? cf.timezone  ?? null,
+    lat:      Number(cf.latitude  as string | undefined) || null,
+    lon:      Number(cf.longitude as string | undefined) || null,
+    continent: cf.continent ?? null,
+  });
 }
 
 // ---------- sg.email ----------
