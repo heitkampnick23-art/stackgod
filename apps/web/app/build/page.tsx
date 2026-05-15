@@ -1,6 +1,7 @@
 'use client';
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import BuildTour from '../_components/build-tour';
 
 const API = 'https://api.stakgod.com';
 
@@ -305,6 +306,8 @@ function BuildInner() {
 
   return (
     <div className="grid md:grid-cols-[480px_1fr] gap-0 h-[calc(100vh-4rem)] relative">
+      <BuildTour />
+
       {/* Live peer cursors (overlay) */}
       {Array.from(peers.entries()).filter(([, p]) => p.x !== undefined && p.y !== undefined).map(([id, p]) => (
         <div key={id} aria-hidden style={{
