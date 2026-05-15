@@ -38,6 +38,22 @@ function BuildInner() {
   const [versions, setVersions] = useState<Array<{ ts: number }>>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [reverting, setReverting] = useState<number | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [selected, setSelected] = useState<{ selector: string; html: string; text: string } | null>(null);
+  const [editPrompt, setEditPrompt] = useState('');
+
+  // Listen for element-clicked messages from the iframe (when select-mode is on).
+  useEffect(() => {
+    function onMsg(e: MessageEvent) {
+      const d = e.data as { __sg?: boolean; type?: string; selector?: string; html?: string; text?: string };
+      if (!d || !d.__sg) return;
+      if (d.type === 'select' && d.selector) {
+        setSelected({ selector: d.selector, html: d.html ?? '', text: (d.text ?? '').trim() });
+      }
+    }
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
 
   const endRef = useRef<HTMLDivElement>(null);
   const lastIframeUpdate = useRef(0);
@@ -113,11 +129,28 @@ function BuildInner() {
     return j.id;
   }
 
+  async function submitElementEdit() {
+    if (!selected || !editPrompt.trim() || streaming) return;
+    const sel = selected;
+    const prompt = editPrompt.trim();
+    setSelected(null);
+    setEditPrompt('');
+    setEditMode(false);
+    const wrapped = `Edit ONLY the element matching this CSS selector: \`${sel.selector}\`\n\nCurrent element snippet (for context):\n\`\`\`html\n${sel.html}\n\`\`\`\n\nUser's instruction: ${prompt}`;
+    await sendMessage(wrapped, prompt);
+  }
+
   async function send() {
     if (!input.trim() || streaming) return;
     const text = input;
     setInput('');
-    setMsgs((m) => [...m, { role: 'user', text }, { role: 'assistant', text: '' }]);
+    await sendMessage(text, text);
+  }
+
+  async function sendMessage(realMessage: string, displayInChat: string) {
+    if (!realMessage.trim() || streaming) return;
+    const text = realMessage;
+    setMsgs((m) => [...m, { role: 'user', text: displayInChat }, { role: 'assistant', text: '' }]);
     setStreaming(true);
     try {
       const id = await ensureApp();
@@ -214,6 +247,12 @@ function BuildInner() {
                 ↩ Versions ({versions.length})
               </button>
             )}
+            <button
+              onClick={() => { setEditMode((v) => !v); setSelected(null); }}
+              title="Click any element in the preview to edit it"
+              className={`text-xs rounded-full px-3 py-1 font-semibold ${editMode ? 'bg-flame text-white' : 'bg-white/5 text-white/60 hover:text-white'}`}>
+              🎯 {editMode ? 'Selecting…' : 'Select'}
+            </button>
           </div>
           {deployedUrl && (
             <a href={deployedUrl} target="_blank" rel="noreferrer" className="text-xs text-flame hover:underline truncate max-w-[40%]">
@@ -223,9 +262,35 @@ function BuildInner() {
         </div>
         <div className="flex-1 relative">
           {view === 'preview' ? (
-            <iframe srcDoc={previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
+            <iframe srcDoc={editMode ? withSelectMode(previewHtml) : previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
           ) : (
             <pre className="absolute inset-0 overflow-auto p-4 text-xs leading-relaxed font-mono text-white/90 bg-[#0a0a0f]">{previewHtml || '// no code yet'}</pre>
+          )}
+
+          {/* Element edit prompt */}
+          {selected && (
+            <div className="absolute left-1/2 bottom-6 -translate-x-1/2 w-[min(540px,90%)] bg-ink/95 backdrop-blur-xl border border-flame/40 rounded-2xl p-4 shadow-2xl">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0">
+                  <div className="text-xs uppercase tracking-wider text-flame mb-1">Editing element</div>
+                  <code className="text-xs text-white/70 break-all">{selected.selector}</code>
+                  {selected.text && <div className="text-xs text-white/50 mt-1 line-clamp-2">&ldquo;{selected.text}&rdquo;</div>}
+                </div>
+                <button onClick={() => { setSelected(null); setEditPrompt(''); }} className="text-white/40 hover:text-white text-xl leading-none shrink-0">×</button>
+              </div>
+              <form onSubmit={(e) => { e.preventDefault(); submitElementEdit(); }} className="flex gap-2">
+                <input
+                  autoFocus
+                  value={editPrompt}
+                  onChange={(e) => setEditPrompt(e.target.value)}
+                  placeholder="Make it red, remove this, add a button below…"
+                  className="flex-1 rounded-full bg-white/10 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-flame" />
+                <button type="submit" disabled={!editPrompt.trim() || streaming}
+                  className="btn-primary text-sm !px-5 !py-2 disabled:opacity-50">
+                  {streaming ? '…' : 'Apply'}
+                </button>
+              </form>
+            </div>
           )}
 
           {/* Versions drawer */}
@@ -266,6 +331,30 @@ export default function Build() {
       <BuildInner />
     </Suspense>
   );
+}
+
+// ----- Visual element editor: injects a hover/click-capture script into the
+//        preview iframe when select-mode is on. Clicking an element posts back
+//        a stable CSS selector + outerHTML snippet so the parent can ask Claude
+//        to patch that exact element.
+function withSelectMode(html: string): string {
+  if (!html) return html;
+  const inject = `<style>
+[data-sg-hover]{outline:2px dashed #ff5b1f!important;outline-offset:2px;cursor:crosshair!important}
+[data-sg-selected]{outline:3px solid #ff5b1f!important;outline-offset:2px}
+html,body{cursor:crosshair!important}
+</style>
+<script>(function(){
+function cssPath(el){const parts=[];while(el&&el.nodeType===1&&parts.length<5){let s=el.tagName.toLowerCase();if(el.id){parts.unshift(s+'#'+CSS.escape(el.id));break;}const cls=(typeof el.className==='string'?el.className:'').split(/\\s+/).filter(Boolean).slice(0,2);if(cls.length)s+='.'+cls.map(c=>CSS.escape(c)).join('.');const sib=el.parentElement?Array.from(el.parentElement.children).filter(c=>c.tagName===el.tagName):[];if(sib.length>1)s+=':nth-of-type('+(sib.indexOf(el)+1)+')';parts.unshift(s);el=el.parentElement;}return parts.join(' > ');}
+let lastH=null;
+document.addEventListener('mouseover',function(e){if(lastH)lastH.removeAttribute('data-sg-hover');if(e.target&&e.target.setAttribute){e.target.setAttribute('data-sg-hover','1');lastH=e.target;}},true);
+document.addEventListener('mouseout',function(e){if(e.target&&e.target.removeAttribute)e.target.removeAttribute('data-sg-hover');},true);
+document.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();var t=e.target;document.querySelectorAll('[data-sg-selected]').forEach(function(el){el.removeAttribute('data-sg-selected');});t.setAttribute('data-sg-selected','1');try{parent.postMessage({__sg:true,type:'select',selector:cssPath(t),html:(t.outerHTML||'').slice(0,1500),text:(t.textContent||'').slice(0,200)},'*');}catch(err){}},true);
+document.addEventListener('submit',function(e){e.preventDefault();},true);
+})();</script>`;
+  if (html.includes('</head>')) return html.replace('</head>', inject + '</head>');
+  if (html.includes('<body>')) return html.replace('<body>', '<body>' + inject);
+  return inject + html;
 }
 
 function renderAssistant(text: string, streaming: boolean) {
