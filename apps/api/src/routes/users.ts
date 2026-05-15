@@ -17,6 +17,52 @@ function deriveHandle(email: string): string {
   return base || 'user';
 }
 
+// Top builders leaderboard. Aggregates each builder's public apps for views
+// (live KV) + revenue (D1 builder_payouts). Cached 5 min at the edge.
+users.get('/leaderboard', async (c) => {
+  const by = (c.req.query('by') ?? 'views') === 'revenue' ? 'revenue' : 'views';
+  const limit = Math.min(20, Math.max(1, Number(c.req.query('limit') ?? '10')));
+
+  // Pull all builders with at least one public app.
+  const rows = await c.env.DB.prepare(
+    `SELECT u.id, u.handle, u.name, u.avatar_url, COUNT(a.id) AS app_count
+     FROM users u JOIN apps a ON a.user_id = u.id
+     WHERE u.handle IS NOT NULL AND a.is_public = 1 AND a.status = 'live'
+     GROUP BY u.id LIMIT 500`
+  ).all<{ id: string; handle: string; name: string | null; avatar_url: string | null; app_count: number }>();
+
+  const builders = await Promise.all((rows.results ?? []).map(async (b) => {
+    // Public app slugs for this builder.
+    const slugRows = await c.env.DB.prepare(
+      `SELECT slug FROM apps WHERE user_id=? AND is_public=1 AND status='live' LIMIT 100`
+    ).bind(b.id).all<{ slug: string }>();
+    const slugs = (slugRows.results ?? []).map((r) => r.slug);
+
+    let total_views = 0;
+    if (by === 'views' || by === 'revenue') {
+      // Live KV view counts (parallel).
+      const counts = await Promise.all(slugs.map((s) => c.env.APP_DATA.get(`appviews:${s}:total`)));
+      total_views = counts.reduce((sum, v) => sum + (Number(v ?? 0) || 0), 0);
+    }
+
+    let revenue_cents = 0;
+    if (by === 'revenue') {
+      const r = await c.env.DB.prepare(
+        `SELECT COALESCE(SUM(amount_gross_cents),0) AS gross FROM builder_payouts WHERE user_id=?`
+      ).bind(b.id).first<{ gross: number }>();
+      revenue_cents = r?.gross ?? 0;
+    }
+
+    return {
+      handle: b.handle, name: b.name, avatar_url: b.avatar_url,
+      apps: b.app_count, total_views, revenue_cents,
+    };
+  }));
+
+  builders.sort((a, b) => by === 'revenue' ? (b.revenue_cents - a.revenue_cents) : (b.total_views - a.total_views));
+  return c.json({ builders: builders.slice(0, limit), by }, 200, { 'cache-control': 'public, max-age=300' });
+});
+
 users.get('/me', requireAuth, async (c) => {
   const user = c.get('user')!;
   const row = await c.env.DB.prepare(
