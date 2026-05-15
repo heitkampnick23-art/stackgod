@@ -12,6 +12,7 @@ import { connect } from './routes/connect';
 import { builds } from './routes/builds';
 import { templates } from './routes/templates';
 import { tips } from './routes/tips';
+import { icons } from './routes/icons';
 import { appDomain } from './routes/app-domain';
 import { discover } from './routes/discover';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
