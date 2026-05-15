@@ -1,6 +1,6 @@
 {
   "runtime": "edge",
-  "name": "changelog",
+  "name": "discover",
   "deploymentTarget": "v8-worker",
   "entrypoint": "index.js",
   "assets": [],
