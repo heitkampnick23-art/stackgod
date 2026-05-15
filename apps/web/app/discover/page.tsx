@@ -24,7 +24,7 @@ export const metadata: Metadata = {
 
 interface DApp {
   slug: string; name: string; description: string | null; url: string;
-  updated_at: number; view_count: number; fork_price_cents?: number;
+  updated_at: number; view_count: number; views_24h?: number; fork_price_cents?: number;
 }
 interface LeaderboardApp { slug: string; name: string; tagline: string | null; url: string; view_count: number; }
 interface LeaderboardBuilder { handle: string; name: string | null; avatar_url: string | null; apps: number; total_views: number; revenue_cents: number; }

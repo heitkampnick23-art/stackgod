@@ -6,7 +6,9 @@ import type { Env, Variables } from '../types';
 
 export const discover = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-interface Row { slug: string; name: string; description: string | null; tagline: string | null; custom_domain: string | null; view_count: number; updated_at: number; fork_price_cents: number; }
+interface Row { slug: string; name: string; description: string | null; tagline: string | null; custom_domain: string | null; view_count: number; updated_at: number; fork_price_cents: number; views_24h?: number; }
+
+const TODAY = (): string => new Date().toISOString().slice(0, 10);
 
 discover.get('/', async (c) => {
   const cursor = Math.max(0, Number(c.req.query('cursor') ?? '0'));
@@ -31,10 +33,15 @@ discover.get('/', async (c) => {
   const r = await stmt.all<Row>();
   let rows = r.results ?? [];
 
-  // Hydrate views from KV.
+  // Hydrate views from KV (total + today's count for the 🔥 Trending badge).
+  const today = TODAY();
   await Promise.all(rows.map(async (a) => {
-    const v = await c.env.APP_DATA.get(`appviews:${a.slug}:total`);
-    a.view_count = Number(v ?? a.view_count ?? 0);
+    const [total, day] = await Promise.all([
+      c.env.APP_DATA.get(`appviews:${a.slug}:total`),
+      c.env.APP_DATA.get(`appviews:${a.slug}:d:${today}`),
+    ]);
+    a.view_count = Number(total ?? a.view_count ?? 0);
+    a.views_24h  = Number(day ?? 0);
   }));
 
   if (sort === 'top') rows = rows.sort((a, b) => b.view_count - a.view_count);
@@ -47,6 +54,7 @@ discover.get('/', async (c) => {
     url: a.custom_domain ? `https://${a.custom_domain}/` : `https://apps.stakgod.com/${a.slug}/`,
     updated_at: a.updated_at,
     view_count: a.view_count,
+    views_24h: a.views_24h ?? 0,
     fork_price_cents: a.fork_price_cents,
   }));
   return c.json({ apps, next_cursor: hasMore ? cursor + limit : null, sort }, 200, {

@@ -5,7 +5,7 @@ const API = 'https://api.stakgod.com';
 
 interface DApp {
   slug: string; name: string; description: string | null; url: string;
-  updated_at: number; view_count: number; fork_price_cents?: number;
+  updated_at: number; view_count: number; views_24h?: number; fork_price_cents?: number;
 }
 
 export default function DiscoverGrid({ initial }: { initial: { apps: DApp[]; next_cursor: number | null } }) {
@@ -51,7 +51,12 @@ export default function DiscoverGrid({ initial }: { initial: { apps: DApp[]; nex
 
       <div className="mt-10 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {apps.map((a) => (
-          <article key={a.slug} className="card !p-0 overflow-hidden flex flex-col">
+          <article key={a.slug} className="card !p-0 overflow-hidden flex flex-col relative">
+            {(a.views_24h ?? 0) >= 10 && (
+              <div className="absolute top-3 left-3 z-10 inline-flex items-center gap-1 rounded-full bg-flame/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white shadow-lg shadow-flame/30 backdrop-blur-sm" title={`${a.views_24h} views in the last 24h`}>
+                🔥 Trending
+              </div>
+            )}
             <div className="bg-white">
               <iframe
                 src={a.url}
