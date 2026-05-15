@@ -134,6 +134,29 @@ export default function Dashboard() {
   );
 }
 
+function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="rounded bg-white/5 border border-white/10 px-2 py-2">
+      <div className="text-[10px] uppercase tracking-wider text-white/40">{label}</div>
+      <div className="text-sm font-bold mt-0.5">{value}</div>
+      {sub && <div className="text-[10px] text-white/40 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
+
+function Sparkline({ data }: { data: number[] }) {
+  if (data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const w = 100, h = 24;
+  const step = w / (data.length - 1);
+  const path = data.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i * step).toFixed(1)},${(h - (v / max) * h).toFixed(1)}`).join(' ');
+  return (
+    <svg className="mt-3 w-full h-6" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <path d={path} fill="none" stroke="#ff5b1f" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
 function BuildStatus({ status }: { status: string }) {
   const cls = status === 'succeeded' ? 'text-emerald-400' :
               status === 'failed'    ? 'text-red-400' :
@@ -149,6 +172,20 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
   const [isPublic, setIsPublic] = useState(!!app.is_public);
   const [tagline, setTagline] = useState(app.tagline ?? '');
   const [savingVis, setSavingVis] = useState(false);
+  const [openAnalytics, setOpenAnalytics] = useState(false);
+  const [analytics, setAnalytics] = useState<{
+    views: { total: number; today: number; daily: Array<{ d: string; n: number }> };
+    db_keys: number;
+    push: { subscribers: number; sent_month: number };
+    ai: { calls_month: number; calls_today: number; cost_usd_month: number };
+    email: { sent_month: number };
+    payments: { gross_cents: number; fee_cents: number; transactions: number };
+  } | null>(null);
+
+  async function loadAnalytics() {
+    const r = await fetch(`${API}/apps/${app.id}/analytics`, { credentials: 'include' });
+    if (r.ok) setAnalytics(await r.json());
+  }
 
   async function togglePublic(next: boolean) {
     setSavingVis(true);
@@ -230,6 +267,28 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
           {shippingAndroid ? '…' : '🤖 Play'}
         </button>
       </div>
+
+      <button onClick={() => { setOpenAnalytics((v) => !v); if (!analytics) loadAnalytics(); }} className="btn-ghost text-xs !py-2 mt-2 w-full">
+        📊 {openAnalytics ? 'Hide analytics' : 'Analytics'}
+      </button>
+      {openAnalytics && (
+        <div className="mt-3 pt-3 border-t border-white/10 text-xs">
+          {!analytics && <div className="text-white/40">Loading…</div>}
+          {analytics && (
+            <>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <Stat label="Views" value={analytics.views.total.toLocaleString()} sub={`${analytics.views.today} today`} />
+                <Stat label="Subscribers" value={analytics.push.subscribers.toLocaleString()} sub="push" />
+                <Stat label="DB keys" value={analytics.db_keys.toLocaleString()} sub="rows" />
+                <Stat label="AI calls" value={analytics.ai.calls_month.toLocaleString()} sub={`${analytics.ai.calls_today} today`} />
+                <Stat label="Emails" value={analytics.email.sent_month.toLocaleString()} sub="this month" />
+                <Stat label="Revenue" value={'$' + (analytics.payments.gross_cents / 100).toFixed(2)} sub={`${analytics.payments.transactions} txns`} />
+              </div>
+              {analytics.views.daily.length > 0 && <Sparkline data={analytics.views.daily.map(d => d.n)} />}
+            </>
+          )}
+        </div>
+      )}
 
       <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
         <label className="flex items-center gap-2 text-xs cursor-pointer select-none">

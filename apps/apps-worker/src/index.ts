@@ -51,7 +51,7 @@ export default {
     ctx.waitUntil(runDueTasks(env).then(() => {}));
   },
 
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url);
     const host = (req.headers.get('host') ?? url.hostname).toLowerCase();
     const segs = url.pathname.split('/').filter(Boolean);
@@ -75,7 +75,25 @@ export default {
     let path = pathSegs.join('/');
     if (path === '' || path.endsWith('/')) path += 'index.html';
     const obj = await env.APPS.get(`apps/${slug}/${path}`);
-    if (obj) return r2Response(obj, path, slug);
+    if (obj) {
+      // Top-level HTML page-load: count it as a view (best-effort, async).
+      const isHtml = (path === 'index.html' || path.endsWith('.html')) && (req.headers.get('sec-fetch-dest') ?? 'document') === 'document';
+      if (isHtml && req.method === 'GET') {
+        const env2 = env;
+        const today = new Date().toISOString().slice(0, 10);
+        // Fire-and-forget: KV increments are eventually consistent and we don't block the page load.
+        ctx.waitUntil((async () => {
+          const totalKey = `appviews:${slug}:total`;
+          const dayKey   = `appviews:${slug}:d:${today}`;
+          const [t, d] = await Promise.all([env2.APP_DATA.get(totalKey), env2.APP_DATA.get(dayKey)]);
+          await Promise.all([
+            env2.APP_DATA.put(totalKey, String((Number(t ?? '0') || 0) + 1)),
+            env2.APP_DATA.put(dayKey,   String((Number(d ?? '0') || 0) + 1), { expirationTtl: 60 * 60 * 24 * 90 }),
+          ]);
+        })());
+      }
+      return r2Response(obj, path, slug);
+    }
     const root = await env.APPS.get(`apps/${slug}/index.html`);
     if (root) return r2Response(root, 'index.html', slug);
     return text('app not found', 404);

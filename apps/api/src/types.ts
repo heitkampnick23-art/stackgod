@@ -4,6 +4,8 @@ export interface Env {
   APPS: R2Bucket;
   AI: Ai;
   SESSIONS: KVNamespace;
+  APP_DATA: KVNamespace;
+  APP_HOSTS: KVNamespace;
   APP_HOSTS: KVNamespace;
   BUILD_QUEUE: Queue;
   APP_URL: string;
