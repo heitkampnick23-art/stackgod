@@ -21,6 +21,9 @@ bucket_name = "stackgod-artifacts"
 binding = "APPS"
 bucket_name = "stackgod-apps"
 
+[ai]
+binding = "AI"
+
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "749eec723bcc4db1892ede8c1a4b401b"

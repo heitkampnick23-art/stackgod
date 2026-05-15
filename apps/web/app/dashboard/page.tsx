@@ -202,9 +202,19 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
   return (
     <div className="card">
       <Link href={`/build?app=${app.id}`} className="block">
-        <div className="font-semibold">{app.name}</div>
-        <div className="text-xs text-white/50 mt-1 truncate">{liveUrl.replace(/^https?:\/\//, '')}</div>
-        <div className="mt-3 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{app.status}</div>
+        <div className="flex items-start gap-3">
+          <img
+            src={`https://apps.stakgod.com/${app.slug}/icon.png`}
+            alt=""
+            onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+            className="w-12 h-12 rounded-xl object-cover bg-white/5 border border-white/10 shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold truncate">{app.name}</div>
+            <div className="text-xs text-white/50 mt-1 truncate">{liveUrl.replace(/^https?:\/\//, '')}</div>
+            <div className="mt-2 inline-block text-xs px-2 py-0.5 rounded bg-white/10">{app.status}</div>
+          </div>
+        </div>
       </Link>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <a href={liveUrl} target="_blank" rel="noreferrer" className="btn-ghost text-xs !py-2">Open ↗</a>

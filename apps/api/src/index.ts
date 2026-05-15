@@ -41,6 +41,7 @@ app.route('/domains', domains);
 app.route('/apps', apps);
 app.route('/apps', appDomain);
 app.route('/discover', discover);
+app.route('/apps', icons);
 app.route('/mobile', mobile);
 app.route('/connect', connect);
 app.route('/builds', builds);

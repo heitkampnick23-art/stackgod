@@ -8,6 +8,7 @@ import type { Env, Variables } from '../types';
 import { requireAuth } from '../middleware/auth';
 import { requireCredits } from '../middleware/credits';
 import { pickModel, costUsd, type ModelId } from '../lib/model-router';
+import { generateIconIfMissing } from './icons';
 
 export const builder = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -85,6 +86,11 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
           }
           deployed_url = `https://apps.stakgod.com/${app.slug}/`;
           await c.env.DB.prepare(`UPDATE apps SET status='live', updated_at=unixepoch() WHERE id=?`).bind(body.app_id).run();
+          // Best-effort: kick off AI icon gen on the first successful deploy.
+          c.executionCtx.waitUntil((async () => {
+            const meta = await c.env.DB.prepare(`SELECT name, description FROM apps WHERE id=?`).bind(body.app_id).first<{ name: string; description: string | null }>();
+            if (meta) await generateIconIfMissing(c.env, { slug: app.slug, name: meta.name, description: meta.description });
+          })());
         }
         await Promise.all([
           c.env.DB.prepare(

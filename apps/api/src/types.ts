@@ -2,6 +2,7 @@ export interface Env {
   DB: D1Database;
   ARTIFACTS: R2Bucket;
   APPS: R2Bucket;
+  AI: Ai;
   SESSIONS: KVNamespace;
   APP_HOSTS: KVNamespace;
   BUILD_QUEUE: Queue;

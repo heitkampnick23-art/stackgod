@@ -67,10 +67,21 @@ export default function Discover() {
                 sandbox="allow-scripts allow-same-origin" />
             </div>
             <div className="p-4 flex-1 flex flex-col">
-              <div className="font-display text-lg">{a.name}</div>
-              {a.description && <div className="text-sm text-white/60 mt-1 line-clamp-2">{a.description}</div>}
-              <div className="text-xs text-white/40 mt-2">{new Date(a.updated_at * 1000).toLocaleDateString()}{a.view_count > 0 ? ` · ${a.view_count} views` : ''}</div>
-              <div className="flex gap-2 mt-3">
+              <div className="flex items-start gap-3 mb-3">
+                <img
+                  src={`https://apps.stakgod.com/${a.slug}/icon.png`}
+                  alt=""
+                  loading="lazy"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  className="w-10 h-10 rounded-lg object-cover bg-white/5 border border-white/10 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="font-display text-lg truncate">{a.name}</div>
+                  {a.description && <div className="text-sm text-white/60 mt-1 line-clamp-2">{a.description}</div>}
+                  <div className="text-xs text-white/40 mt-1">{new Date(a.updated_at * 1000).toLocaleDateString()}{a.view_count > 0 ? ` · ${a.view_count} views` : ''}</div>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-auto">
                 <a href={a.url} target="_blank" rel="noreferrer" className="btn-ghost text-xs !py-2 flex-1 text-center">Open ↗</a>
                 <a href={`/build?fork=${a.slug}`} className="btn-primary text-xs !py-2 flex-1 text-center">Remix →</a>
               </div>

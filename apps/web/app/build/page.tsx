@@ -38,6 +38,7 @@ function BuildInner() {
   const [versions, setVersions] = useState<Array<{ ts: number }>>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [reverting, setReverting] = useState<number | null>(null);
+  const [streamChars, setStreamChars] = useState(0);
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<{ selector: string; html: string; text: string } | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
@@ -183,8 +184,9 @@ function BuildInner() {
               assembled += j.delta;
               setMsgs((m) => [...m.slice(0, -1), { role: 'assistant', text: assembled }]);
               const html = extractHtml(assembled);
-              if (html && Date.now() - lastIframeUpdate.current > 200) {
-                setPreviewHtml(html);
+              setStreamChars(assembled.length);
+              if (html && Date.now() - lastIframeUpdate.current > 80) {
+                setPreviewHtml(html + (html.includes('</html>') ? '' : '\n<!-- streaming… -->'));
                 lastIframeUpdate.current = Date.now();
               }
             }
@@ -199,6 +201,7 @@ function BuildInner() {
       }
     } finally {
       setStreaming(false);
+      setStreamChars(0);
     }
   }
 
@@ -262,9 +265,17 @@ function BuildInner() {
         </div>
         <div className="flex-1 relative">
           {view === 'preview' ? (
-            <iframe srcDoc={editMode ? withSelectMode(previewHtml) : previewHtml} className="w-full h-full bg-white" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
+            <iframe srcDoc={editMode ? withSelectMode(previewHtml) : previewHtml} className={`w-full h-full bg-white transition-all ${streaming ? 'ring-2 ring-flame/60 ring-inset' : ''}`} sandbox="allow-scripts allow-forms allow-popups allow-modals allow-same-origin" />
           ) : (
             <pre className="absolute inset-0 overflow-auto p-4 text-xs leading-relaxed font-mono text-white/90 bg-[#0a0a0f]">{previewHtml || '// no code yet'}</pre>
+          )}
+
+          {/* Streaming indicator */}
+          {streaming && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-flame/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-1.5 shadow-lg">
+              <span className="size-1.5 rounded-full bg-white animate-ping" />
+              Generating · {streamChars.toLocaleString()} chars
+            </div>
           )}
 
           {/* Element edit prompt */}
