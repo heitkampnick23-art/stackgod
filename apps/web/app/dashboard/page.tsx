@@ -77,6 +77,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <ProfilePanel />
+
       <h2 className="font-display text-2xl mt-12">Ship to stores</h2>
       <p className="text-sm text-white/50 mt-1">Apps publish under your own developer accounts (Apple Guideline 4.2.6). Bring your keys, we automate every ship.</p>
       <div className="mt-4 grid md:grid-cols-2 gap-4">
@@ -129,6 +131,98 @@ export default function Dashboard() {
             </table>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function ProfilePanel() {
+  const [profile, setProfile] = useState<{ handle: string | null; bio: string | null; twitter: string | null; website: string | null } | null>(null);
+  const [handle, setHandle] = useState('');
+  const [bio, setBio] = useState('');
+  const [twitter, setTwitter] = useState('');
+  const [website, setWebsite] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/users/me`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { profile: { handle: string | null; bio: string | null; twitter: string | null; website: string | null } } | null) => {
+        if (!d?.profile) return;
+        setProfile(d.profile);
+        setHandle(d.profile.handle ?? '');
+        setBio(d.profile.bio ?? '');
+        setTwitter(d.profile.twitter ?? '');
+        setWebsite(d.profile.website ?? '');
+        if (!d.profile.handle) setOpen(true);
+      });
+  }, []);
+
+  async function save() {
+    setBusy(true); setMsg(null);
+    const r = await fetch(`${API}/users/me`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ handle: handle.trim().toLowerCase(), bio, twitter, website }),
+    });
+    setBusy(false);
+    if (r.ok) {
+      setMsg({ kind: 'ok', text: `Saved · stakgod.com/u/${handle.trim().toLowerCase()}` });
+      setProfile((p) => p ? { ...p, handle: handle.trim().toLowerCase(), bio, twitter, website } : p);
+    } else {
+      const j = await r.json();
+      setMsg({ kind: 'err', text: j.error ?? 'failed' });
+    }
+  }
+
+  return (
+    <div className="card mt-8 border-gold/20">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-xs uppercase tracking-wider text-gold">Public profile</div>
+          <div className="font-display text-lg mt-1">
+            {profile?.handle ? (
+              <Link href={`/u/${profile.handle}`} className="hover:underline">stakgod.com/u/{profile.handle}</Link>
+            ) : 'Claim your @handle'}
+          </div>
+        </div>
+        <button onClick={() => setOpen((v) => !v)} className="btn-ghost text-xs !py-2">{open ? 'Close' : profile?.handle ? 'Edit' : 'Set up'}</button>
+      </div>
+
+      {open && (
+        <div className="mt-4 grid md:grid-cols-2 gap-3 text-sm">
+          <div>
+            <label className="text-xs text-white/50">Handle</label>
+            <div className="flex items-center gap-1 mt-1">
+              <span className="text-white/40">@</span>
+              <input value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="yourhandle" maxLength={32}
+                className="flex-1 rounded bg-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-flame lowercase" />
+            </div>
+            <div className="text-[10px] text-white/40 mt-1">lowercase a-z 0-9 dash, 3-32 chars</div>
+          </div>
+          <div>
+            <label className="text-xs text-white/50">Twitter / X (no @)</label>
+            <input value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="yourname" maxLength={40}
+              className="mt-1 w-full rounded bg-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-flame" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs text-white/50">Bio</label>
+            <textarea value={bio} onChange={(e) => setBio(e.target.value)} maxLength={280} rows={2}
+              placeholder="What you build"
+              className="mt-1 w-full rounded bg-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-flame resize-none" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs text-white/50">Website</label>
+            <input value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://..."
+              className="mt-1 w-full rounded bg-white/10 px-3 py-2 outline-none focus:ring-2 focus:ring-flame" />
+          </div>
+          <div className="md:col-span-2 flex items-center justify-between gap-3">
+            <button onClick={save} disabled={busy || !handle} className="btn-primary text-sm disabled:opacity-50">{busy ? 'Saving…' : 'Save profile'}</button>
+            {msg && <div className={`text-xs ${msg.kind === 'ok' ? 'text-emerald-400' : 'text-red-400'}`}>{msg.text}</div>}
+          </div>
+        </div>
       )}
     </div>
   );
