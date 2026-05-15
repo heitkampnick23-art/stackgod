@@ -33,6 +33,12 @@ body::after {
               radial-gradient(600px 300px at 80% 200px, rgba(212,175,55,.2), transparent 60%);
 }
 
+/* A11y: visible focus ring on every interactive element. */
+*:focus-visible { outline: 2px solid #ff5b1f; outline-offset: 2px; border-radius: 6px; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+  outline: 2px solid #ff5b1f; outline-offset: 2px;
+}
+
 .btn { @apply inline-flex items-center justify-center rounded-full px-6 py-3 font-semibold transition; }
 .btn-primary { @apply btn bg-flame text-white hover:bg-flame/90 shadow-[0_8px_24px_rgba(255,91,31,0.35)]; }
 .btn-ghost { @apply btn bg-white/10 text-white hover:bg-white/20 backdrop-blur-md; }

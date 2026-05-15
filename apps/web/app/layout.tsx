@@ -33,10 +33,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen flex flex-col">
+        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:bg-flame focus:text-white focus:rounded-full text-sm font-semibold">Skip to content</a>
         <header className="sticky top-0 z-50 backdrop-blur-xl backdrop-saturate-150 bg-ink/50 border-b border-white/10">
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-            <Link href="/" className="font-display text-xl tracking-wider"><span className="text-gold">STAK</span>GOD</Link>
-            <nav className="hidden md:flex gap-6 text-sm text-white/70">
+            <Link href="/" aria-label="Stakgod home" className="font-display text-xl tracking-wider"><span className="text-gold">STAK</span>GOD</Link>
+            <nav aria-label="Primary" className="hidden md:flex gap-6 text-sm text-white/70">
               <Link href="/discover" className="hover:text-white">Discover</Link>
               <Link href="/templates" className="hover:text-white">Templates</Link>
               <Link href="/showcase" className="hover:text-white">Showcase</Link>
@@ -48,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <HeaderActions />
           </div>
         </header>
-        <main className="flex-1">{children}</main>
+        <main id="main" className="flex-1">{children}</main>
         <footer className="border-t border-white/10 mt-24 backdrop-blur-xl bg-ink/40">
           <div className="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-4 gap-8 text-sm text-white/60">
             <div>

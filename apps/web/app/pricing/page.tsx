@@ -17,6 +17,10 @@ export default function Pricing() {
   return (
     <div className="max-w-6xl mx-auto px-6 py-20">
       <div className="text-center">
+        <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-xs text-emerald-300 mb-6">
+          <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Launch promo · 14-day free trial on every paid plan · ends Dec 1
+        </div>
         <h1 className="font-display text-5xl">Pricing built for shipping.</h1>
         <p className="mt-3 text-white/60">Start free. The wall hits fast — by design.</p>
 

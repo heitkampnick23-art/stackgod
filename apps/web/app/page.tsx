@@ -7,9 +7,9 @@ export default function Home() {
       <section className="relative glass-stage min-h-[90vh] flex items-center">
         <div className="hero-bg" aria-hidden />
         <div className="relative z-10 max-w-6xl mx-auto px-6 pt-24 pb-20 text-center w-full">
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 backdrop-blur-md px-3 py-1 text-xs text-white/80">
-            <span className="size-1.5 rounded-full bg-flame animate-pulse" /> Live now — built on Cloudflare
-          </div>
+          <Link href="/pricing" className="inline-flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 backdrop-blur-md px-3 py-1 text-xs text-emerald-300 hover:bg-emerald-500/20 transition">
+            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" /> Launch promo · 14-day Pro trial · no card charged →
+          </Link>
           <h1 className="mt-6 font-display text-6xl md:text-8xl leading-tight tracking-tight drop-shadow-[0_8px_32px_rgba(0,0,0,0.6)]">
             Speak it. <span className="text-gold">Ship it.</span> Own it.
           </h1>
