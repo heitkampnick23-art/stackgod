@@ -321,6 +321,18 @@ Use for currency selection, language defaults, weather/news/regional content,
 fraud signals, "near me" UX. No permission prompt — it's edge-derived from the
 visitor's IP (privacy: city-level granularity, not GPS-precise).
 
+────  sg.share + sg.embed  ────  Distribute the app, drop it on other sites.
+
+  // Native share sheet on mobile, clipboard fallback on desktop:
+  const r = await sg.share({ title: 'Check out my app', text: 'Built on Stakgod' });
+  // r = { shared, via: 'native' | 'clipboard' | 'cancelled' | 'unsupported', url? }
+
+  // Get an iframe snippet to embed on a blog/Notion page:
+  const html = sg.embed({ width: '100%', height: 640 });
+  // → <iframe src="https://apps.stakgod.com/{slug}/?embed=1" ...></iframe>
+  // Embed mode strips X-Frame-Options and uses a tiny corner badge instead
+  // of the full Remix bar so the embed feels native to the host page.
+
 ────  sg.cron  ────  Schedule recurring server-side tasks (1-minute resolution).
 
   // Push a daily reminder to all subscribers at 9am UTC:

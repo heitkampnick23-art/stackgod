@@ -74,6 +74,7 @@ export default {
 
     let path = pathSegs.join('/');
     if (path === '' || path.endsWith('/')) path += 'index.html';
+    const embed = url.searchParams.get('embed') === '1';
     const obj = await env.APPS.get(`apps/${slug}/${path}`);
     if (obj) {
       // Top-level HTML page-load: count it as a view (best-effort, async).
@@ -92,30 +93,32 @@ export default {
           ]);
         })());
       }
-      return r2Response(obj, path, slug);
+      return r2Response(obj, path, slug, embed);
     }
     const root = await env.APPS.get(`apps/${slug}/index.html`);
-    if (root) return r2Response(root, 'index.html', slug);
+    if (root) return r2Response(root, 'index.html', slug, embed);
     return text('app not found', 404);
   },
 };
 
-async function r2Response(obj: R2ObjectBody, path: string, slug: string): Promise<Response> {
+async function r2Response(obj: R2ObjectBody, path: string, slug: string, embed = false): Promise<Response> {
   const ext = path.split('.').pop()?.toLowerCase() ?? 'html';
   const headers = new Headers(STATIC_HEADERS);
   headers.set('content-type', TYPES[ext] ?? 'application/octet-stream');
   if (obj.httpEtag) headers.set('etag', obj.httpEtag);
+  // Embed mode: allow framing on third-party sites (Notion, blog posts, etc).
+  if (embed) headers.delete('x-frame-options');
 
   if (ext === 'html' || ext === 'htm') {
     const html = await obj.text();
-    return new Response(injectSdk(html, slug), { status: 200, headers });
+    return new Response(injectSdk(html, slug, embed), { status: 200, headers });
   }
   return new Response(obj.body, { status: 200, headers });
 }
 
 // ---------- Auto-injected SDK ----------
 
-function injectSdk(html: string, slug: string): string {
+function injectSdk(html: string, slug: string, embed = false): string {
   const sdk = `<script>window.sg=(function(){const B='/${slug}/__api__';
 async function J(p,o){const r=await fetch(B+p,o);if(r.status===204)return null;const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{}if(!r.ok)throw Object.assign(new Error(j&&j.error||t||r.status),{status:r.status,detail:j});return j;}
 return {
@@ -160,9 +163,14 @@ cron:{
 add:t=>J('/cron',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(t)}),
 list:()=>J('/cron'),
 del:id=>J('/cron/'+encodeURIComponent(id),{method:'DELETE'}),
+},
+async share(o){o=o||{};const u=o.url||(location.origin+location.pathname+'?utm_source=share&utm_campaign=${slug}');const data={title:o.title||document.title,text:o.text||'',url:u};if(navigator.share){try{await navigator.share(data);return{shared:true,via:'native'};}catch(e){if(e.name==='AbortError')return{shared:false,via:'cancelled'};}}try{await navigator.clipboard.writeText(u);return{shared:true,via:'clipboard',url:u};}catch(e){return{shared:false,via:'unsupported',url:u};}},
+embed(opts){const u=new URL(location.origin+location.pathname);u.searchParams.set('embed','1');const w=(opts&&opts.width)||'100%';const h=(opts&&opts.height)||'640';return '<iframe src="'+u.toString()+'" width="'+w+'" height="'+h+'" style="border:0;border-radius:12px" loading="lazy" allow="clipboard-write *"></iframe>';},
 }};})();</script>`;
 
-  const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
+  const badge = embed
+    ? `<a id="__sg_badge__" href="https://stakgod.com/?utm_source=embed&amp;utm_medium=badge&amp;utm_campaign=${slug}" target="_blank" rel="noreferrer" style="position:fixed;bottom:6px;right:6px;z-index:2147483647;font:500 10px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;padding:4px 8px;border-radius:9999px;background:rgba(10,10,15,0.7);color:#f5f5f7;backdrop-filter:blur(8px);text-decoration:none;border:1px solid rgba(255,255,255,0.08)"><span style="color:#d4af37">STAK</span>GOD</a>`
+    : `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
 <a href="https://stakgod.com/?utm_source=app&amp;utm_medium=badge&amp;utm_campaign=${slug}" target="_blank" rel="noreferrer" style="color:inherit;text-decoration:none;display:flex;align-items:center;gap:4px"><span style="color:#d4af37;font-weight:700">STAK</span><span style="font-weight:700">GOD</span></a>
 <span style="opacity:0.4">·</span>
 <a href="https://stakgod.com/build?fork=${slug}" target="_blank" rel="noreferrer" style="color:#ff5b1f;text-decoration:none;font-weight:600">Remix</a>
