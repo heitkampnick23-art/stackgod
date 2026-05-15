@@ -312,11 +312,25 @@ Use for currency selection, language defaults, weather/news/regional content,
 fraud signals, "near me" UX. No permission prompt — it's edge-derived from the
 visitor's IP (privacy: city-level granularity, not GPS-precise).
 
-────  sg.notify  ────  Browser-native notifications (no server setup).
-  await sg.notify.show('Streak saved!', { body: '12 days strong 🔥', icon: '/icon.png' });
-  // First call asks permission. Subsequent calls show silently.
-  // sg.notify.ask() to request permission separately.
-Web push (server-sent, even when tab is closed) lands in a future release.
+────  sg.notify  ────  Real web push notifications (delivered even when tab is closed)
+                          + foreground browser notifications.
+
+  // FOREGROUND (works while page is open, no setup):
+  await sg.notify.show('Streak saved!', { body: '12 days strong 🔥' });
+
+  // SERVER-PUSH (delivered with page closed). Two-step:
+  // 1) The user opts in once on their device:
+  await sg.notify.subscribe();   // requests perm, registers our SW, stores their push subscription server-side
+  // 2) Later, anything in your app can push to ALL subscribers of THIS app:
+  await sg.notify.broadcast({ title: 'Daily reminder', body: 'Time for your check-in', url: '/' });
+  // Or only to the current signed-in user:
+  await sg.notify.toMe({ title: "Don't break the streak!", body: '12 days 🔥' });
+  await sg.notify.unsubscribe();
+
+Caller for broadcast/toMe MUST be signed in via sg.auth (anti-anon-spam).
+Builder daily push quotas: free 50, hobby 1k, pro 10k, studio 100k. Quota
+exhaustion returns 402 with an upgrade message. Subscriptions auto-clean up
+when push services return 404/410.
 
 ────  sg.email  ────  Transactional emails sent from your app via Resend (verified stakgod.com).
   await sg.email.send({

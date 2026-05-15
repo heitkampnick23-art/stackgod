@@ -13,9 +13,14 @@ interface Env {
   ANTHROPIC_API_KEY: string;
   RESEND_API_KEY: string;
   STRIPE_SECRET_KEY: string;
+  VAPID_PUBLIC_KEY: string;
+  VAPID_PRIVATE_KEY: string;
+  VAPID_SUBJECT: string;
   APP_URL: string;
   APPS_HOST: string;
 }
+
+import { sendPush, type PushSubscription } from './lib/webpush';
 
 const STATIC_HEADERS: Record<string, string> = {
   'cache-control': 'public, max-age=300',
@@ -123,6 +128,10 @@ geo:()=>J('/geo'),
 notify:{
 async ask(){if(!('Notification'in window))return 'unsupported';if(Notification.permission==='granted')return 'granted';if(Notification.permission==='denied')return 'denied';return await Notification.requestPermission();},
 async show(title,opts){if(!('Notification'in window))return false;if(Notification.permission!=='granted'){const p=await this.ask();if(p!=='granted')return false;}new Notification(title,opts||{});return true;},
+async subscribe(){if(!('serviceWorker'in navigator)||!('PushManager'in window))throw new Error('push_unsupported');const p=await this.ask();if(p!=='granted')throw new Error('permission_denied');const reg=await navigator.serviceWorker.register('/${slug}/__api__/notify/sw.js',{scope:'/${slug}/'});await navigator.serviceWorker.ready;const{publicKey}=await J('/notify/key');const k=Uint8Array.from(atob(publicKey.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-publicKey.length%4)%4)),c=>c.charCodeAt(0));const sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:k});const j=sub.toJSON();await J('/notify/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})});return{ok:true};},
+async unsubscribe(){if(!('serviceWorker'in navigator))return{ok:true};const reg=await navigator.serviceWorker.getRegistration('/${slug}/');if(!reg)return{ok:true};const sub=await reg.pushManager.getSubscription();if(sub){await J('/notify/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});await sub.unsubscribe();}return{ok:true};},
+broadcast:p=>J('/notify/broadcast',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)}),
+toMe:p=>J('/notify/self',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)}),
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -151,6 +160,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'uploads')  return handleUploads(req, env, slug);
   if (sub[0] === 'email')    return handleEmail(req, env, slug, sub.slice(1));
   if (sub[0] === 'geo')      return handleGeo(req);
+  if (sub[0] === 'notify')   return handleNotify(req, env, slug, sub.slice(1));
   return text('not found', 404);
 }
 
@@ -566,6 +576,163 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.notify (server-side web push) ----------
+//
+// Subscriptions stored in KV: appsub:{slug}:{ownerId}:{idx}  → JSON subscription
+// Anyone signed-in (sg.auth) can subscribe / receive their own pushes via /self.
+// /broadcast is gated on caller being signed in (anti-anon-spam) and rate-limited
+// per-app per-day.
+
+const MAX_BROADCASTS_PER_DAY = 200;
+const NOTIFY_QUOTA_BY_PLAN: Record<'free' | 'hobby' | 'pro' | 'studio', number> = {
+  free: 50, hobby: 1000, pro: 10000, studio: 100000,
+};
+
+interface NotifyPayload { title: string; body?: string; icon?: string; url?: string; tag?: string; }
+
+const SW_JS = (slug: string) => `// stakgod push service worker for ${slug}
+self.addEventListener('install', e => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch {}
+  const title = d.title || 'Notification';
+  const body = d.body || '';
+  const icon = d.icon || '/${slug}/icon.png';
+  e.waitUntil(self.registration.showNotification(title, { body, icon, tag: d.tag, data: { url: d.url || '/' } }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = (e.notification.data && e.notification.data.url) || '/';
+  e.waitUntil(self.clients.matchAll({ type: 'window' }).then(cs => {
+    for (const c of cs) { if (c.url.includes('/${slug}/') && 'focus' in c) return c.focus(); }
+    if (self.clients.openWindow) return self.clients.openWindow('/${slug}' + url);
+  }));
+});`;
+
+async function handleNotify(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
+  const url = new URL(req.url);
+
+  if (sub[0] === 'sw.js' && req.method === 'GET') {
+    return new Response(SW_JS(slug), {
+      headers: { 'content-type': 'text/javascript; charset=utf-8', 'service-worker-allowed': '/', 'cache-control': 'public, max-age=300' },
+    });
+  }
+  if (sub[0] === 'key' && req.method === 'GET') {
+    return json({ publicKey: env.VAPID_PUBLIC_KEY });
+  }
+
+  const user = await currentUser(req, env, slug);
+  const ownerId = user?.id ?? `anon-${hashIp(req)}`;
+
+  if (sub[0] === 'subscribe' && req.method === 'POST') {
+    const body = await req.json<PushSubscription>();
+    if (!body?.endpoint || !body?.keys?.p256dh || !body?.keys?.auth) return json({ error: 'invalid_subscription' }, 400);
+    // Stable hash of endpoint so re-subscribing replaces rather than duplicating.
+    const idx = await sha1Hex(body.endpoint);
+    await env.APP_DATA.put(`appsub:${slug}:${ownerId}:${idx}`, JSON.stringify(body));
+    return json({ ok: true, sub_id: idx });
+  }
+
+  if (sub[0] === 'unsubscribe' && req.method === 'POST') {
+    const { endpoint } = await req.json<{ endpoint?: string }>();
+    if (endpoint) {
+      const idx = await sha1Hex(endpoint);
+      await env.APP_DATA.delete(`appsub:${slug}:${ownerId}:${idx}`);
+      return json({ ok: true });
+    }
+    // No endpoint provided → wipe all of this user's subscriptions for the app.
+    const list = await env.APP_DATA.list({ prefix: `appsub:${slug}:${ownerId}:`, limit: 1000 });
+    await Promise.all(list.keys.map((k) => env.APP_DATA.delete(k.name)));
+    return json({ ok: true, removed: list.keys.length });
+  }
+
+  if (sub[0] === 'self' && req.method === 'POST') {
+    if (!user) return json({ error: 'sign_in_required' }, 401);
+    const payload = await req.json<NotifyPayload>();
+    if (!payload?.title) return json({ error: 'missing_title' }, 400);
+    const list = await env.APP_DATA.list({ prefix: `appsub:${slug}:${ownerId}:`, limit: 50 });
+    return json(await sendToList(env, slug, list.keys.map((k) => k.name), payload));
+  }
+
+  if (sub[0] === 'broadcast' && req.method === 'POST') {
+    if (!user) return json({ error: 'sign_in_required' }, 401);
+    const payload = await req.json<NotifyPayload>();
+    if (!payload?.title) return json({ error: 'missing_title' }, 400);
+
+    // Plan-tier daily quota for the BUILDER.
+    const owner = await env.DB.prepare(
+      `SELECT u.id, u.plan FROM apps a JOIN users u ON u.id=a.user_id WHERE a.slug=?`
+    ).bind(slug).first<{ id: string; plan: 'free' | 'hobby' | 'pro' | 'studio' }>();
+    if (!owner) return json({ error: 'app_not_found' }, 404);
+    const startOfDay = Math.floor(new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000);
+    const sent = await env.DB.prepare(
+      `SELECT COALESCE(SUM(tokens_in),0) AS n FROM usage_events WHERE user_id=? AND kind='push_send' AND ts>=?`
+    ).bind(owner.id, startOfDay).first<{ n: number }>();
+    const limit = NOTIFY_QUOTA_BY_PLAN[owner.plan];
+    if ((sent?.n ?? 0) >= limit) {
+      return json({ error: 'builder_push_quota_exceeded', used: sent?.n, limit, message: `This app's owner has hit their ${limit}/day push quota. Upgrade at ${env.APP_URL}/pricing.` }, 402);
+    }
+
+    // Soft per-app per-day broadcast cap (anti-noise — independent of subscriber count).
+    const broadcastCount = await env.APP_DATA.get(`appbcast:${slug}:${new Date().toISOString().slice(0, 10)}`);
+    const bc = Number(broadcastCount ?? '0');
+    if (bc >= MAX_BROADCASTS_PER_DAY) return json({ error: 'too_many_broadcasts_today', limit: MAX_BROADCASTS_PER_DAY }, 429);
+    await env.APP_DATA.put(`appbcast:${slug}:${new Date().toISOString().slice(0, 10)}`, String(bc + 1), { expirationTtl: 86400 * 2 });
+
+    const allKeys: string[] = [];
+    let cursor: string | undefined;
+    for (let i = 0; i < 6; i++) {
+      const r = await env.APP_DATA.list({ prefix: `appsub:${slug}:`, cursor, limit: 1000 });
+      for (const k of r.keys) allKeys.push(k.name);
+      if (r.list_complete) break;
+      cursor = (r as { cursor?: string }).cursor;
+    }
+    const result = await sendToList(env, slug, allKeys, payload);
+    if (result.delivered > 0) {
+      await env.DB.prepare(
+        `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd) VALUES (?, ?, 'push_send', ?, ?, 0, 0)`
+      ).bind(crypto.randomUUID(), owner.id, slug, result.delivered).run();
+    }
+    return json(result);
+  }
+
+  return text('not found', 404);
+}
+
+async function sendToList(env: Env, slug: string, keys: string[], payload: NotifyPayload): Promise<{ delivered: number; expired: number; failed: number; total: number }> {
+  let delivered = 0, expired = 0, failed = 0;
+  const body = JSON.stringify({
+    title: payload.title.slice(0, 200),
+    body: payload.body?.slice(0, 500),
+    icon: payload.icon ?? `/${slug}/icon.png`,
+    url: payload.url ?? '/',
+    tag: payload.tag,
+  });
+  // Limit fan-out per request to avoid blowing past the worker subrequest budget.
+  const batch = keys.slice(0, 200);
+  for (const k of batch) {
+    const raw = await env.APP_DATA.get(k);
+    if (!raw) continue;
+    let sub: PushSubscription;
+    try { sub = JSON.parse(raw); } catch { continue; }
+    const r = await sendPush(sub, {
+      vapidPublicKey: env.VAPID_PUBLIC_KEY,
+      vapidPrivateKey: env.VAPID_PRIVATE_KEY,
+      vapidSubject: env.VAPID_SUBJECT,
+      payload: body,
+    });
+    if (r.ok) delivered++;
+    else if (r.expired) { expired++; await env.APP_DATA.delete(k); }
+    else failed++;
+  }
+  return { delivered, expired, failed, total: keys.length };
+}
+
+async function sha1Hex(s: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
 }
 
 // ---------- sg.geo ----------
