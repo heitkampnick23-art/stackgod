@@ -26,6 +26,7 @@ export interface Env {
   BUILD_TOKEN_SECRET: string;   // HMAC for one-time CI build tokens
   GH_PAT: string;               // fine-grained PAT for workflow_dispatch
   GH_REPO: string;              // e.g. "heitkampnick23-art/stackgod"
+  BUILD_ROOM: DurableObjectNamespace;
 }
 
 export interface User {

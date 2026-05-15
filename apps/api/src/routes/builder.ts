@@ -321,6 +321,26 @@ builder.post('/apps/:id/fork-price', requireAuth, async (c) => {
   return c.json({ ok: true, fork_price_cents: cents });
 });
 
+// Real-time collab: open a WebSocket into the per-app Durable Object room.
+// GET /builder/room/:app_id with Upgrade: websocket; auth via session cookie.
+// Query params name/color/avatar are reflected in the welcome message.
+builder.get('/room/:app_id', async (c) => {
+  if (c.req.header('upgrade') !== 'websocket') return c.text('expected websocket', 400);
+  const user = c.get('user');
+  if (!user) return c.text('unauthorized', 401);
+  const appId = c.req.param('app_id');
+  const ok = await c.env.DB.prepare(`SELECT 1 AS ok FROM apps WHERE id=? AND user_id=?`).bind(appId, user.id).first();
+  if (!ok) return c.text('not found', 404);
+
+  const id = c.env.BUILD_ROOM.idFromName(appId);
+  const stub = c.env.BUILD_ROOM.get(id);
+  // Append the user's metadata as query params for the DO to relay in the welcome.
+  const url = new URL(c.req.url);
+  url.searchParams.set('id', user.id);
+  url.searchParams.set('name', user.name ?? user.email.split('@')[0] ?? 'Builder');
+  return stub.fetch(new Request(url.toString(), c.req.raw));
+});
+
 builder.get('/usage', requireAuth, async (c) => {
   const user = c.get('user')!;
   const startOfDay = Math.floor(new Date(new Date().toISOString().slice(0, 10)).getTime() / 1000);

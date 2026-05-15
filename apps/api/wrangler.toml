@@ -36,6 +36,14 @@ id = "69d61efe60e149cbad76e7acc25970fa"
 binding = "APP_HOSTS"
 id = "c38c6cef8be149e6b99088570dee838d"
 
+[[durable_objects.bindings]]
+name = "BUILD_ROOM"
+class_name = "BuildRoom"
+
+[[migrations]]
+tag = "v1-buildroom"
+new_classes = ["BuildRoom"]
+
 [[queues.producers]]
 binding = "BUILD_QUEUE"
 queue = "stackgod-builds"

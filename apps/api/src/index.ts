@@ -18,6 +18,7 @@ import { users } from './routes/users';
 import { appDomain } from './routes/app-domain';
 import { discover } from './routes/discover';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
+export { BuildRoom } from './do/build-room';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 

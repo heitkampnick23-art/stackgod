@@ -57,6 +57,8 @@ function BuildInner() {
   const [view, setView] = useState<'preview' | 'code'>('preview');
   const [deployedUrl, setDeployedUrl] = useState<string | null>(null);
   const [versions, setVersions] = useState<Array<{ ts: number }>>([]);
+  const [peers, setPeers] = useState<Map<string, { name: string; color: string; x?: number; y?: number; lastMove?: number }>>(new Map());
+  const wsRef = useRef<WebSocket | null>(null);
   const [showVersions, setShowVersions] = useState(false);
   const [reverting, setReverting] = useState<number | null>(null);
   const [streamChars, setStreamChars] = useState(0);
@@ -136,6 +138,36 @@ function BuildInner() {
       }
     });
     refreshVersions(appId);
+  }, [appId]);
+
+  // Real-time collab: open WebSocket into the room for this app.
+  useEffect(() => {
+    if (!appId) return;
+    const ws = new WebSocket(API.replace(/^http/, 'ws') + `/builder/room/${appId}`);
+    wsRef.current = ws;
+    let lastSent = 0;
+    function onMove(e: MouseEvent) {
+      const now = Date.now();
+      if (now - lastSent < 50) return;
+      lastSent = now;
+      ws.readyState === 1 && ws.send(JSON.stringify({ kind: 'cursor', x: e.clientX / window.innerWidth, y: e.clientY / window.innerHeight }));
+    }
+    ws.addEventListener('open', () => window.addEventListener('mousemove', onMove));
+    ws.addEventListener('message', (ev) => {
+      try {
+        const m = JSON.parse(ev.data);
+        if (m.kind === 'welcome') {
+          setPeers(new Map(m.peers.map((p: { id: string; name: string; color: string }) => [p.id, { name: p.name, color: p.color }])));
+        } else if (m.kind === 'join') {
+          setPeers((prev) => { const n = new Map(prev); n.set(m.peer.id, { name: m.peer.name, color: m.peer.color }); return n; });
+        } else if (m.kind === 'leave') {
+          setPeers((prev) => { const n = new Map(prev); n.delete(m.peer.id); return n; });
+        } else if (m.kind === 'cursor' && m.from) {
+          setPeers((prev) => { const n = new Map(prev); const p = n.get(m.from); if (p) n.set(m.from, { ...p, x: m.x, y: m.y, lastMove: Date.now() }); return n; });
+        }
+      } catch {/**/}
+    });
+    return () => { window.removeEventListener('mousemove', onMove); ws.close(); };
   }, [appId]);
 
   function refreshVersions(id: string | null) {
@@ -272,11 +304,33 @@ function BuildInner() {
   }
 
   return (
-    <div className="grid md:grid-cols-[480px_1fr] gap-0 h-[calc(100vh-4rem)]">
+    <div className="grid md:grid-cols-[480px_1fr] gap-0 h-[calc(100vh-4rem)] relative">
+      {/* Live peer cursors (overlay) */}
+      {Array.from(peers.entries()).filter(([, p]) => p.x !== undefined && p.y !== undefined).map(([id, p]) => (
+        <div key={id} aria-hidden style={{
+          position: 'fixed', left: `${(p.x ?? 0) * 100}vw`, top: `${(p.y ?? 0) * 100}vh`,
+          transform: 'translate(-2px, -2px)', pointerEvents: 'none', zIndex: 9999,
+          transition: 'left 60ms linear, top 60ms linear',
+        }}>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill={p.color}><path d="M2 2l6 16 3-7 7-3z" /></svg>
+          <div style={{ background: p.color, color: 'white', padding: '2px 6px', borderRadius: 6, fontSize: 11, fontWeight: 600, marginTop: 2, whiteSpace: 'nowrap' }}>{p.name}</div>
+        </div>
+      ))}
+
       {/* Chat */}
       <div className="flex flex-col border-r border-white/10 bg-ink/40 backdrop-blur-xl">
         <div className="px-6 py-3 border-b border-white/10 flex items-center justify-between">
-          <div className="text-sm text-white/60">Builder</div>
+          <div className="text-sm text-white/60 flex items-center gap-2">
+            Builder
+            {peers.size > 0 && (
+              <div className="flex -space-x-1">
+                {Array.from(peers.values()).slice(0, 4).map((p, i) => (
+                  <div key={i} title={p.name} className="size-5 rounded-full border-2 border-ink grid place-items-center text-[9px] font-bold text-white" style={{ background: p.color }}>{p.name[0]?.toUpperCase()}</div>
+                ))}
+                {peers.size > 4 && <div className="size-5 rounded-full bg-white/10 border-2 border-ink grid place-items-center text-[9px] font-bold">+{peers.size - 4}</div>}
+              </div>
+            )}
+          </div>
           {usage && <div className="text-xs text-white/40">{usage.messages} msgs today</div>}
         </div>
         <div className="flex-1 overflow-auto px-6 py-6 space-y-4">
