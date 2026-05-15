@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; }
+interface App { id: string; slug: string; name: string; status: string; custom_domain?: string | null; is_public?: number; tagline?: string | null; }
 interface Usage { messages: number; cost: number; }
 interface Build { id: string; app_id: string; kind: string; status: string; bundle_id: string | null; gh_run_url: string | null; artifact_url: string | null; error: string | null; queued_at: number; }
 
@@ -146,6 +146,30 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
   const [domain, setDomain] = useState(app.custom_domain ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>('');
+  const [isPublic, setIsPublic] = useState(!!app.is_public);
+  const [tagline, setTagline] = useState(app.tagline ?? '');
+  const [savingVis, setSavingVis] = useState(false);
+
+  async function togglePublic(next: boolean) {
+    setSavingVis(true);
+    setIsPublic(next);
+    await fetch(`${API}/apps/${app.id}/visibility`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ is_public: next, tagline }),
+    });
+    setSavingVis(false);
+    onChange();
+  }
+  async function saveTagline() {
+    setSavingVis(true);
+    await fetch(`${API}/apps/${app.id}/visibility`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ is_public: isPublic, tagline }),
+    });
+    setSavingVis(false);
+  }
 
   async function attach() {
     setBusy(true); setMsg('');
@@ -195,6 +219,22 @@ function AppCard({ app, onShipIos, onShipAndroid, shippingIos, shippingAndroid, 
         <button onClick={onShipAndroid} disabled={shippingAndroid} className="btn-ghost text-xs disabled:opacity-50">
           {shippingAndroid ? '…' : '🤖 Play'}
         </button>
+      </div>
+
+      <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+        <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
+          <input type="checkbox" checked={isPublic} onChange={(e) => togglePublic(e.target.checked)} disabled={savingVis} />
+          <span className="text-white/70">{isPublic ? '🌍 Public on /discover' : 'Private'}</span>
+        </label>
+        {isPublic && (
+          <input
+            value={tagline}
+            onChange={(e) => setTagline(e.target.value)}
+            onBlur={saveTagline}
+            placeholder="One-line tagline"
+            maxLength={120}
+            className="text-xs rounded bg-white/10 px-2 py-1 outline-none focus:ring-1 focus:ring-flame max-w-[55%]" />
+        )}
       </div>
 
       {openDomain && (

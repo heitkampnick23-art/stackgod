@@ -13,6 +13,7 @@ import { builds } from './routes/builds';
 import { templates } from './routes/templates';
 import { tips } from './routes/tips';
 import { appDomain } from './routes/app-domain';
+import { discover } from './routes/discover';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
@@ -39,6 +40,7 @@ app.route('/builder', builder);
 app.route('/domains', domains);
 app.route('/apps', apps);
 app.route('/apps', appDomain);
+app.route('/discover', discover);
 app.route('/mobile', mobile);
 app.route('/connect', connect);
 app.route('/builds', builds);

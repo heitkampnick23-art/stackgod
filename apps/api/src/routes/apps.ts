@@ -29,8 +29,23 @@ apps.post('/', requireAuth, async (c) => {
 apps.get('/', requireAuth, async (c) => {
   const user = c.get('user')!;
   const { results } = await c.env.DB.prepare(
-    `SELECT id, slug, name, description, status, custom_domain, ios_bundle_id, android_package, updated_at
+    `SELECT id, slug, name, description, tagline, status, custom_domain, ios_bundle_id, android_package,
+            is_public, view_count, updated_at
      FROM apps WHERE user_id=? AND status!='archived' ORDER BY updated_at DESC`
   ).bind(user.id).all();
   return c.json({ apps: results });
+});
+
+// Toggle public visibility + optional tagline.
+apps.post('/:id/visibility', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const id = c.req.param('id');
+  const body = await c.req.json<{ is_public: boolean; tagline?: string }>();
+  const tagline = (body.tagline ?? '').trim().slice(0, 120) || null;
+  const r = await c.env.DB.prepare(
+    `UPDATE apps SET is_public=?, tagline=COALESCE(?,tagline), updated_at=unixepoch()
+     WHERE id=? AND user_id=?`
+  ).bind(body.is_public ? 1 : 0, tagline, id, user.id).run();
+  if ((r.meta as { changes?: number }).changes === 0) return c.json({ error: 'not_found' }, 404);
+  return c.json({ ok: true, is_public: body.is_public, tagline });
 });
