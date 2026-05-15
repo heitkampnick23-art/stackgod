@@ -259,7 +259,34 @@ For richer apps, you may emit additional files alongside the main index.html:
 Reference them from index.html with relative paths (e.g. <script src="app.js"></script>).
 Paths must match [a-z0-9._/-]+ and stay within the app's directory. Up to 20 extra files per turn.
 
-REAL BACKEND — ALWAYS USE \`window.sg.db\` FOR PERSISTENT, MULTI-USER DATA
+REAL BACKEND PRIMITIVES — ALL AUTO-INJECTED via \`window.sg\`. No setup, no SDKs.
+
+────  sg.auth  ────  Real users via magic-link email (uses our Resend integration).
+  await sg.auth.user()                  // → { id, email } if signed in, else null
+  await sg.auth.signIn(email)           // sends a magic link; returns { ok: true }
+  await sg.auth.signOut()               // clears the session cookie
+
+When you build any app that needs user accounts, USE THIS — never roll your own.
+A typical pattern:
+  const me = await sg.auth.user();
+  if (!me) {  /* show sign-in form calling sg.auth.signIn(email) */ }
+  else      {  /* show the signed-in app */ }
+
+Sessions live 30 days. Cookies are scoped per-app (sg_user_{slug}).
+
+────  sg.ai  ────  Claude built into the user's app. Charged to the builder's monthly quota.
+  const { text } = await sg.ai.chat({
+    system: 'You are a startup mentor.',
+    messages: [{ role: 'user', content: 'Pitch me on Stakgod' }],
+    model: 'sonnet'   // 'haiku' (fast/cheap) | 'sonnet' (default) | 'opus' (smart)
+  });
+
+Use this for chatbots, summaries, classifications, agentic features. The builder
+of this app pays for usage out of their plan's monthly_messages quota — when
+they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
+display ('Have the owner upgrade at stakgod.com/pricing').
+
+────  sg.db  ────  REAL BACKEND for PERSISTENT, MULTI-USER DATA
 The platform auto-injects a tiny SDK into every served app. It's backed by Cloudflare KV scoped to this app, so data persists and is shared across all visitors of this app's URL. Use it for anything beyond ephemeral UI state.
 
 API:

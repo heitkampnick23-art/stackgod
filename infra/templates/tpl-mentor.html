@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Startup Mentor — your AI co-founder</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#0a0a0f] text-white min-h-screen">
+<div id="root" class="max-w-2xl mx-auto p-6 min-h-screen flex flex-col"></div>
+
+<script>
+const SYSTEM = `You are a sharp, direct startup mentor in the style of Paul Graham mixed with a brutally honest cofounder. Keep replies under 6 sentences. Always ask one specific follow-up question. Never use corporate-speak.`;
+
+async function init() {
+  const me = await sg.auth.user();
+  if (!me) renderSignIn(); else renderChat(me);
+}
+
+function el(tag, cls, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+function renderSignIn() {
+  document.getElementById('root').innerHTML = `
+    <div class="m-auto text-center max-w-sm">
+      <div class="text-5xl mb-4">🧠</div>
+      <h1 class="text-3xl font-bold">Startup Mentor</h1>
+      <p class="text-white/60 mt-2 text-sm">Your AI co-founder. Sign in to save your conversations.</p>
+      <form id="signin" class="mt-8 space-y-3">
+        <input id="email" type="email" required placeholder="you@domain.com"
+          class="w-full rounded-full bg-white/10 px-5 py-3 outline-none focus:ring-2 focus:ring-orange-500" />
+        <button class="w-full rounded-full bg-orange-500 hover:bg-orange-600 text-white font-semibold py-3">Email me a magic link</button>
+      </form>
+      <div id="msg" class="mt-3 text-sm text-emerald-400 h-5"></div>
+    </div>`;
+  document.getElementById('signin').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    try { await sg.auth.signIn(email); document.getElementById('msg').textContent = '📬 Check your inbox.'; }
+    catch (err) { document.getElementById('msg').className = 'mt-3 text-sm text-red-400 h-5'; document.getElementById('msg').textContent = err.message; }
+  });
+}
+
+async function renderChat(me) {
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <header class="flex items-center justify-between py-4 border-b border-white/10">
+      <div class="flex items-center gap-2"><div class="text-2xl">🧠</div><div class="font-semibold">Startup Mentor</div></div>
+      <div class="text-xs text-white/50">${me.email} · <button id="signout" class="underline hover:text-white">sign out</button></div>
+    </header>
+    <main id="thread" class="flex-1 overflow-auto py-6 space-y-4"></main>
+    <form id="ask" class="py-4 border-t border-white/10 flex gap-2">
+      <input id="q" required placeholder="What's on your mind?" autocomplete="off"
+        class="flex-1 rounded-full bg-white/10 px-5 py-3 outline-none focus:ring-2 focus:ring-orange-500" />
+      <button class="rounded-full bg-orange-500 hover:bg-orange-600 text-white font-semibold px-5">Send</button>
+    </form>`;
+
+  document.getElementById('signout').onclick = async () => { await sg.auth.signOut(); location.reload(); };
+
+  const thread = document.getElementById('thread');
+  const KEY = 'thread:' + me.id;
+  let messages = (await sg.db.get(KEY)) || [];
+
+  function paint() {
+    thread.innerHTML = messages.length === 0
+      ? `<div class="text-center text-white/40 mt-12 text-sm">Try: "I'm thinking about quitting my job to build my idea — what's the first thing I should do?"</div>`
+      : messages.map(m => `<div class="${m.role==='user' ? 'ml-auto bg-orange-500' : 'bg-white/5 border border-white/10'} max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap">${escape(m.content)}</div>`).join('');
+    thread.scrollTop = thread.scrollHeight;
+  }
+  paint();
+
+  document.getElementById('ask').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const q = document.getElementById('q').value.trim();
+    if (!q) return;
+    document.getElementById('q').value = '';
+    messages.push({ role: 'user', content: q });
+    paint();
+    const placeholder = { role: 'assistant', content: '…' };
+    messages.push(placeholder); paint();
+    try {
+      const res = await sg.ai.chat({ system: SYSTEM, messages: messages.filter(m => m.content !== '…'), model: 'sonnet' });
+      placeholder.content = res.text;
+    } catch (err) {
+      placeholder.content = err.detail?.message || err.message || 'Something went wrong.';
+    }
+    paint();
+    await sg.db.put(KEY, messages.slice(-30));
+  });
+}
+
+function escape(s){return String(s).replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+init();
+</script>
+</body>
+</html>

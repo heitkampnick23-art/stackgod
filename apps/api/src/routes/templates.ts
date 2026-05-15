@@ -12,6 +12,7 @@ export const TEMPLATES = [
   { slug: 'tpl-link-in-bio',    name: 'Link in Bio',       emoji: '🔗', blurb: 'A clean linktree-style page. Add/edit links in-app.' },
   { slug: 'tpl-tip-jar',        name: 'Tip Jar',           emoji: '🪙', blurb: 'Collect tips with a goal bar. Connect Stripe later.' },
   { slug: 'tpl-newsletter',     name: 'Newsletter Signup', emoji: '✉️', blurb: 'Capture emails. List in-app, export to CSV.' },
+  { slug: 'tpl-mentor',         name: 'Startup Mentor',    emoji: '🧠', blurb: 'AI co-founder w/ memory + sign-in. Demos sg.auth + sg.ai + sg.db together.' },
 ];
 
 templates.get('/', (c) => c.json({ templates: TEMPLATES }));
