@@ -312,6 +312,29 @@ Use for currency selection, language defaults, weather/news/regional content,
 fraud signals, "near me" UX. No permission prompt — it's edge-derived from the
 visitor's IP (privacy: city-level granularity, not GPS-precise).
 
+────  sg.cron  ────  Schedule recurring server-side tasks (1-minute resolution).
+
+  // Push a daily reminder to all subscribers at 9am UTC:
+  await sg.cron.add({
+    name: 'morning-reminder',
+    schedule: '09:00',                    // 'HH:MM' UTC | '@hourly' | '@daily' | '@weekly' | 'every 15m'
+    action: { kind: 'push', title: 'Morning check-in', body: 'Log your habits.' },
+  });
+
+  // POST to your own webhook every hour:
+  await sg.cron.add({
+    name: 'hourly-sync',
+    schedule: '@hourly',
+    action: { kind: 'webhook', url: 'https://my-server.com/sync', body_json: { source: 'app' } },
+  });
+
+  await sg.cron.list();        // all tasks for this app, sorted by next run
+  await sg.cron.del(id);
+
+Caller must be signed in via sg.auth (only the user who created a task can
+delete it). Limit: 20 tasks per app. Actions: 'push' (broadcast notification)
+or 'webhook' (POST JSON to a URL).
+
 ────  sg.notify  ────  Real web push notifications (delivered even when tab is closed)
                           + foreground browser notifications.
 

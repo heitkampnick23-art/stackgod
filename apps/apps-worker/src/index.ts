@@ -46,6 +46,10 @@ const MAX_AI_INPUT_CHARS = 20_000;
 const MAX_AI_OUTPUT_TOKENS = 1024;
 
 export default {
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runDueTasks(env).then(() => {}));
+  },
+
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
     const host = (req.headers.get('host') ?? url.hostname).toLowerCase();
@@ -132,6 +136,11 @@ async subscribe(){if(!('serviceWorker'in navigator)||!('PushManager'in window))t
 async unsubscribe(){if(!('serviceWorker'in navigator))return{ok:true};const reg=await navigator.serviceWorker.getRegistration('/${slug}/');if(!reg)return{ok:true};const sub=await reg.pushManager.getSubscription();if(sub){await J('/notify/unsubscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({endpoint:sub.endpoint})});await sub.unsubscribe();}return{ok:true};},
 broadcast:p=>J('/notify/broadcast',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)}),
 toMe:p=>J('/notify/self',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(p)}),
+},
+cron:{
+add:t=>J('/cron',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(t)}),
+list:()=>J('/cron'),
+del:id=>J('/cron/'+encodeURIComponent(id),{method:'DELETE'}),
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -161,6 +170,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'email')    return handleEmail(req, env, slug, sub.slice(1));
   if (sub[0] === 'geo')      return handleGeo(req);
   if (sub[0] === 'notify')   return handleNotify(req, env, slug, sub.slice(1));
+  if (sub[0] === 'cron')     return handleCron(req, env, slug, sub.slice(1));
   return text('not found', 404);
 }
 
@@ -576,6 +586,162 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.cron (scheduled tasks via Workers cron trigger) ----------
+//
+// Tasks live in KV at appcron:{slug}:{id} → { name, schedule, action, next_run }
+// The scheduled() handler fires every minute, lists due tasks, runs them, reschedules.
+//
+// Supported schedules (v0):
+//   '@hourly'      every hour on :00
+//   '@daily'       every day at 00:00 UTC
+//   '@weekly'      every Monday 00:00 UTC
+//   'HH:MM'        daily at that UTC time
+//   'every Nm'     every N minutes (1..1440)
+//
+// Supported actions (v0):
+//   { kind: 'push',    title, body?, url?, scope?: 'all' }
+//   { kind: 'webhook', url, body?, headers? }
+
+interface CronAction {
+  kind: 'push' | 'webhook';
+  title?: string; body?: string; url?: string; scope?: 'all';
+  body_json?: unknown; headers?: Record<string, string>;
+}
+interface CronTask {
+  id: string; slug: string; owner: string; name: string;
+  schedule: string; action: CronAction;
+  next_run: number; last_run: number | null; created_at: number;
+}
+
+const MAX_TASKS_PER_APP = 20;
+const CRON_QUOTA_BY_PLAN: Record<'free' | 'hobby' | 'pro' | 'studio', number> = {
+  free: 100, hobby: 1000, pro: 10000, studio: 100000,
+};
+
+async function handleCron(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
+  const user = await currentUser(req, env, slug);
+  if (!user) return json({ error: 'sign_in_required' }, 401);
+  const ownerId = user.id;
+
+  if (req.method === 'POST' && sub[0] === undefined) {
+    const body = await req.json<{ name: string; schedule: string; action: CronAction }>();
+    if (!body?.name || !body?.schedule || !body?.action) return json({ error: 'missing_fields' }, 400);
+    const next = nextRun(body.schedule, Date.now());
+    if (next === null) return json({ error: 'bad_schedule', supported: ['@hourly', '@daily', '@weekly', 'HH:MM', 'every Nm'] }, 400);
+    if (body.action.kind !== 'push' && body.action.kind !== 'webhook') return json({ error: 'bad_action_kind' }, 400);
+    if (body.action.kind === 'push' && !body.action.title) return json({ error: 'push_needs_title' }, 400);
+    if (body.action.kind === 'webhook' && !body.action.url) return json({ error: 'webhook_needs_url' }, 400);
+
+    // Per-app cap.
+    const existing = await env.APP_DATA.list({ prefix: `appcron:${slug}:`, limit: MAX_TASKS_PER_APP + 1 });
+    if (existing.keys.length >= MAX_TASKS_PER_APP) return json({ error: 'task_limit', limit: MAX_TASKS_PER_APP }, 429);
+
+    const id = crypto.randomUUID();
+    const task: CronTask = {
+      id, slug, owner: ownerId, name: body.name.slice(0, 80),
+      schedule: body.schedule, action: body.action,
+      next_run: next, last_run: null, created_at: Math.floor(Date.now() / 1000),
+    };
+    await env.APP_DATA.put(`appcron:${slug}:${id}`, JSON.stringify(task));
+    return json({ ok: true, id, next_run: next });
+  }
+
+  if (req.method === 'GET' && sub[0] === undefined) {
+    const list = await env.APP_DATA.list({ prefix: `appcron:${slug}:`, limit: 100 });
+    const out: CronTask[] = [];
+    for (const k of list.keys) {
+      const raw = await env.APP_DATA.get(k.name);
+      if (raw) out.push(JSON.parse(raw));
+    }
+    return json(out.sort((a, b) => a.next_run - b.next_run));
+  }
+
+  if (req.method === 'DELETE' && sub[0]) {
+    const id = sub[0];
+    const raw = await env.APP_DATA.get(`appcron:${slug}:${id}`);
+    if (!raw) return json({ error: 'not_found' }, 404);
+    const t = JSON.parse(raw) as CronTask;
+    if (t.owner !== ownerId) return json({ error: 'forbidden' }, 403);
+    await env.APP_DATA.delete(`appcron:${slug}:${id}`);
+    return json({ ok: true });
+  }
+
+  return text('not found', 404);
+}
+
+function nextRun(schedule: string, fromMs: number): number | null {
+  const s = schedule.trim().toLowerCase();
+  const now = new Date(fromMs);
+
+  if (s === '@hourly') {
+    const d = new Date(now); d.setUTCMinutes(0, 0, 0); d.setUTCHours(d.getUTCHours() + 1);
+    return d.getTime();
+  }
+  if (s === '@daily') {
+    const d = new Date(now); d.setUTCHours(24, 0, 0, 0);
+    return d.getTime();
+  }
+  if (s === '@weekly') {
+    const d = new Date(now); d.setUTCHours(0, 0, 0, 0);
+    const dow = d.getUTCDay(); // 0=Sun
+    const daysUntilMon = ((1 - dow + 7) % 7) || 7;
+    d.setUTCDate(d.getUTCDate() + daysUntilMon);
+    return d.getTime();
+  }
+  const hhmm = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (hhmm) {
+    const h = +hhmm[1], m = +hhmm[2];
+    if (h < 0 || h > 23 || m < 0 || m > 59) return null;
+    const d = new Date(now); d.setUTCHours(h, m, 0, 0);
+    if (d.getTime() <= fromMs) d.setUTCDate(d.getUTCDate() + 1);
+    return d.getTime();
+  }
+  const every = s.match(/^every\s+(\d+)\s*m(in|inutes?)?$/);
+  if (every) {
+    const n = +every[1];
+    if (n < 1 || n > 1440) return null;
+    return fromMs + n * 60_000;
+  }
+  return null;
+}
+
+async function runCronTask(task: CronTask, env: Env): Promise<void> {
+  const a = task.action;
+  if (a.kind === 'push') {
+    const list = await env.APP_DATA.list({ prefix: `appsub:${task.slug}:`, limit: 1000 });
+    await sendToList(env, task.slug, list.keys.map((k) => k.name), {
+      title: a.title!, body: a.body, url: a.url,
+    });
+  } else if (a.kind === 'webhook') {
+    try {
+      await fetch(a.url!, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-stakgod-app': task.slug, 'x-stakgod-task': task.name, ...(a.headers ?? {}) },
+        body: JSON.stringify(a.body_json ?? { task: task.name, ts: Date.now() }),
+      });
+    } catch {/* swallow */}
+  }
+}
+
+export async function runDueTasks(env: Env): Promise<{ ran: number }> {
+  const now = Date.now();
+  const list = await env.APP_DATA.list({ prefix: `appcron:`, limit: 1000 });
+  let ran = 0;
+  for (const k of list.keys) {
+    const raw = await env.APP_DATA.get(k.name);
+    if (!raw) continue;
+    const t = JSON.parse(raw) as CronTask;
+    if (t.next_run > now) continue;
+    await runCronTask(t, env);
+    const next = nextRun(t.schedule, now) ?? now + 86_400_000;
+    t.last_run = now;
+    t.next_run = next;
+    await env.APP_DATA.put(k.name, JSON.stringify(t));
+    ran++;
+  }
+  return { ran };
 }
 
 // ---------- sg.notify (server-side web push) ----------

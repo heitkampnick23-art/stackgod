@@ -32,3 +32,7 @@ database_id = "91355169-4ad4-4825-a468-9c830f9dae27"
 [vars]
 APP_URL = "https://stakgod.com"
 APPS_HOST = "apps.stakgod.com"
+
+# Fires every minute to run due cron tasks (sg.cron). ~1440 invocations/day total.
+[triggers]
+crons = ["* * * * *"]
