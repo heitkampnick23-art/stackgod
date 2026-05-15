@@ -105,6 +105,7 @@ signOut:()=>J('/auth/signout',{method:'POST'}),
 ai:{
 chat:({system,messages,model})=>J('/ai/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({system,messages,model})}),
 image:({prompt,steps})=>J('/ai/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,steps})}),
+async stream({system,messages,model,onDelta,signal}){const r=await fetch(B+'/ai/stream',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({system,messages,model}),signal});if(!r.ok)throw new Error('sg.ai.stream '+r.status);const rd=r.body.getReader();const dec=new TextDecoder();let buf='';let final={text:'',tokens_in:0,tokens_out:0,model};let assembled='';while(true){const{value,done}=await rd.read();if(done)break;buf+=dec.decode(value,{stream:true});const evs=buf.split('\\n\\n');buf=evs.pop()||'';for(const ev of evs){const ln=ev.split('\\n').find(l=>l.startsWith('data: '));if(!ln)continue;try{const j=JSON.parse(ln.slice(6));if(j.delta){assembled+=j.delta;if(onDelta)onDelta(j.delta,assembled);}if(j.done){final={text:assembled,tokens_in:j.tokens_in,tokens_out:j.tokens_out,model:j.model};}if(j.error)throw new Error(j.error);}catch(e){}}}return final;},
 },
 payments:{
 checkout:o=>J('/payments/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
@@ -324,6 +325,78 @@ async function handleAi(req: Request, env: Env, slug: string, sub: string[]): Pr
   ).bind(owner.user_id, startOfMonth).first<{ n: number }>();
   if ((usage?.n ?? 0) >= monthlyLimit[plan]) {
     return json({ error: 'builder_quota_exceeded', message: `This app's owner has hit their monthly AI quota. Have them upgrade at ${env.APP_URL}/pricing.` }, 402);
+  }
+
+  if (sub[0] === 'stream' && req.method === 'POST') {
+    const body = await req.json<ChatBody>();
+    if (!Array.isArray(body.messages) || body.messages.length === 0) return json({ error: 'missing_messages' }, 400);
+    const totalChars = (body.system ?? '').length + body.messages.reduce((s, m) => s + m.content.length, 0);
+    if (totalChars > MAX_AI_INPUT_CHARS) return json({ error: 'input_too_large', max: MAX_AI_INPUT_CHARS }, 413);
+
+    const modelId = MODEL_MAP[body.model ?? (plan === 'free' ? 'haiku' : 'sonnet')];
+    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: modelId,
+        max_tokens: MAX_AI_OUTPUT_TOKENS,
+        system: body.system,
+        messages: body.messages,
+        stream: true,
+      }),
+    });
+    if (!upstream.ok || !upstream.body) {
+      const detail = (await upstream.text().catch(() => '')).slice(0, 500);
+      return json({ error: 'ai_failed', detail }, 502);
+    }
+
+    // Proxy Anthropic SSE → our SSE, parse usage from message_start/message_delta,
+    // forward only text deltas as { delta: '...' } JSON SSE events for a tiny SDK.
+    const sse = new ReadableStream({
+      async start(controller) {
+        const enc = new TextEncoder();
+        const dec = new TextDecoder();
+        const reader = upstream.body!.getReader();
+        let buf = '';
+        let tokensIn = 0, tokensOut = 0;
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += dec.decode(value, { stream: true });
+            const events = buf.split('\n\n');
+            buf = events.pop() ?? '';
+            for (const ev of events) {
+              const dataLine = ev.split('\n').find((l) => l.startsWith('data: '));
+              if (!dataLine) continue;
+              try {
+                const j = JSON.parse(dataLine.slice(6));
+                if (j.type === 'content_block_delta' && j.delta?.type === 'text_delta') {
+                  controller.enqueue(enc.encode(`data: ${JSON.stringify({ delta: j.delta.text })}\n\n`));
+                }
+                if (j.type === 'message_start' && j.message?.usage) tokensIn = j.message.usage.input_tokens ?? 0;
+                if (j.type === 'message_delta' && j.usage)         tokensOut = j.usage.output_tokens ?? 0;
+              } catch {}
+            }
+          }
+          const p = PRICING_USD[modelId];
+          const costUsd = (tokensIn / 1_000_000) * p.in + (tokensOut / 1_000_000) * p.out;
+          await env.DB.prepare(
+            `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd) VALUES (?, ?, 'ai_message', ?, ?, ?, ?)`
+          ).bind(crypto.randomUUID(), owner.user_id, modelId, tokensIn, tokensOut, costUsd).run();
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ done: true, model: modelId, tokens_in: tokensIn, tokens_out: tokensOut })}\n\n`));
+        } catch (e) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify({ error: String(e) })}\n\n`));
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(sse, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' } });
   }
 
   if (sub[0] === 'chat' && req.method === 'POST') {

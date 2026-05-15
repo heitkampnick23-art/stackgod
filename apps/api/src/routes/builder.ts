@@ -281,16 +281,28 @@ A typical pattern:
 Sessions live 30 days. Cookies are scoped per-app (sg_user_{slug}).
 
 ────  sg.ai  ────  Claude built into the user's app. Charged to the builder's monthly quota.
+
+  // ONE-SHOT (waits for full response, then returns)
   const { text } = await sg.ai.chat({
     system: 'You are a startup mentor.',
     messages: [{ role: 'user', content: 'Pitch me on Stakgod' }],
     model: 'sonnet'   // 'haiku' (fast/cheap) | 'sonnet' (default) | 'opus' (smart)
   });
 
-Use this for chatbots, summaries, classifications, agentic features. The builder
-of this app pays for usage out of their plan's monthly_messages quota — when
-they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
-display ('Have the owner upgrade at stakgod.com/pricing').
+  // STREAMING (renders tokens as they arrive — use this for chatbot UIs)
+  const out = document.querySelector('#bot-reply');
+  out.textContent = '';
+  const final = await sg.ai.stream({
+    system: 'You are a friendly assistant.',
+    messages: [{ role: 'user', content: input }],
+    onDelta: (chunk) => { out.textContent += chunk; },
+  });
+  // final = { text, tokens_in, tokens_out, model }
+
+Use sg.ai.stream for chatbots, agents, anywhere you want the typewriter feel.
+Same per-month builder quota; both paths debit usage_events on completion.
+When the builder hits their cap, both paths return 402 — display
+'Have the owner upgrade at stakgod.com/pricing'.
 
 ────  sg.geo  ────  Visitor's location from Cloudflare (no setup, no IP geolocation library).
   const g = await sg.geo();
