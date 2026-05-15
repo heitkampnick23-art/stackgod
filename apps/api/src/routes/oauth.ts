@@ -22,7 +22,8 @@ oauth.get('/providers', (c) => {
 oauth.get('/google/start', async (c) => {
   if (!c.env.GOOGLE_CLIENT_ID) return c.text('google not configured', 503);
   const state = crypto.randomUUID();
-  await c.env.SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 600 });
+  const next = sanitizeNext(c.req.query('next'));
+  await c.env.SESSIONS.put(`oauth_state:${state}`, JSON.stringify({ next }), { expirationTtl: 600 });
   const params = new URLSearchParams({
     client_id: c.env.GOOGLE_CLIENT_ID,
     redirect_uri: `${c.env.API_URL}/auth/google/callback`,
@@ -39,8 +40,10 @@ oauth.get('/google/callback', async (c) => {
   const code = c.req.query('code');
   const state = c.req.query('state');
   if (!code || !state) return c.text('missing code/state', 400);
-  if (!(await c.env.SESSIONS.get(`oauth_state:${state}`))) return c.text('bad state', 400);
+  const stateRaw = await c.env.SESSIONS.get(`oauth_state:${state}`);
+  if (!stateRaw) return c.text('bad state', 400);
   await c.env.SESSIONS.delete(`oauth_state:${state}`);
+  const next = (() => { try { return sanitizeNext(JSON.parse(stateRaw).next); } catch { return '/dashboard'; } })();
 
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -78,7 +81,7 @@ oauth.get('/google/callback', async (c) => {
   });
   return new Response(null, {
     status: 302,
-    headers: { location: `${c.env.APP_URL}/dashboard`, 'set-cookie': SESSION_COOKIE(sessionToken) },
+    headers: { location: `${c.env.APP_URL}${next}`, 'set-cookie': SESSION_COOKIE(sessionToken) },
   });
 });
 
@@ -87,7 +90,8 @@ oauth.get('/google/callback', async (c) => {
 oauth.get('/apple/start', async (c) => {
   if (!c.env.APPLE_CLIENT_ID) return c.text('apple not configured', 503);
   const state = crypto.randomUUID();
-  await c.env.SESSIONS.put(`oauth_state:${state}`, '1', { expirationTtl: 600 });
+  const next = sanitizeNext(c.req.query('next'));
+  await c.env.SESSIONS.put(`oauth_state:${state}`, JSON.stringify({ next }), { expirationTtl: 600 });
   const params = new URLSearchParams({
     client_id: c.env.APPLE_CLIENT_ID,
     redirect_uri: `${c.env.API_URL}/auth/apple/callback`,
@@ -105,8 +109,10 @@ oauth.post('/apple/callback', async (c) => {
   const state = form.get('state') as string | null;
   const idToken = form.get('id_token') as string | null;
   if (!state || !idToken) return c.text('missing state/id_token', 400);
-  if (!(await c.env.SESSIONS.get(`oauth_state:${state}`))) return c.text('bad state', 400);
+  const stateRaw = await c.env.SESSIONS.get(`oauth_state:${state}`);
+  if (!stateRaw) return c.text('bad state', 400);
   await c.env.SESSIONS.delete(`oauth_state:${state}`);
+  const next = (() => { try { return sanitizeNext(JSON.parse(stateRaw).next); } catch { return '/dashboard'; } })();
 
   let claims: IdTokenClaims;
   try {
@@ -140,11 +146,22 @@ oauth.post('/apple/callback', async (c) => {
   });
   return new Response(null, {
     status: 302,
-    headers: { location: `${c.env.APP_URL}/dashboard`, 'set-cookie': SESSION_COOKIE(sessionToken) },
+    headers: { location: `${c.env.APP_URL}${next}`, 'set-cookie': SESSION_COOKIE(sessionToken) },
   });
 });
 
 // ---------- helpers ----------
+
+// Open-redirect prevention: only allow same-origin paths starting with '/'.
+// Strips schemes, hosts, and protocol-relative URLs that could be hijacked.
+function sanitizeNext(next: string | undefined | null): string {
+  const def = '/dashboard';
+  if (!next || typeof next !== 'string') return def;
+  if (!next.startsWith('/')) return def;       // must be absolute path
+  if (next.startsWith('//')) return def;       // protocol-relative
+  if (next.length > 200) return def;           // sanity cap
+  return next;
+}
 
 interface UpsertInput {
   email: string;

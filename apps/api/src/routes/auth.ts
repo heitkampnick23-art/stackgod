@@ -7,11 +7,11 @@ import type { Env, Variables } from '../types';
 export const auth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 auth.post('/magic-link', async (c) => {
-  const { email } = await c.req.json<{ email: string }>();
+  const { email, next } = await c.req.json<{ email: string; next?: string }>();
   if (!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return c.json({ error: 'invalid_email' }, 400);
 
   const token = crypto.randomUUID() + crypto.randomUUID();
-  await c.env.SESSIONS.put(`magic:${token}`, email, { expirationTtl: 900 });
+  await c.env.SESSIONS.put(`magic:${token}`, JSON.stringify({ email, next: next ?? '/dashboard' }), { expirationTtl: 900 });
   const link = `${c.env.API_URL}/auth/verify?token=${token}`;
 
   const r = await fetch('https://api.resend.com/emails', {
@@ -31,9 +31,13 @@ auth.post('/magic-link', async (c) => {
 auth.get('/verify', async (c) => {
   const token = c.req.query('token');
   if (!token) return c.text('missing token', 400);
-  const email = await c.env.SESSIONS.get(`magic:${token}`);
-  if (!email) return c.text('expired or invalid', 401);
+  const stored = await c.env.SESSIONS.get(`magic:${token}`);
+  if (!stored) return c.text('expired or invalid', 401);
   await c.env.SESSIONS.delete(`magic:${token}`);
+  // Stored is either a plain email (legacy) or {email, next} JSON.
+  let email: string; let next = '/dashboard';
+  if (stored.startsWith('{')) { try { const o = JSON.parse(stored); email = o.email; next = sanitizeNextLocal(o.next); } catch { email = stored; } }
+  else email = stored;
 
   let user = await c.env.DB.prepare(`SELECT * FROM users WHERE email=?`).bind(email).first<{ id: string }>();
   if (!user) {
@@ -50,11 +54,18 @@ auth.get('/verify', async (c) => {
   return new Response(null, {
     status: 302,
     headers: {
-      location: `${c.env.APP_URL}/dashboard`,
+      location: `${c.env.APP_URL}${next}`,
       'set-cookie': `sg_session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}; Domain=.stakgod.com`,
     },
   });
 });
+
+function sanitizeNextLocal(n: string | undefined | null): string {
+  const def = '/dashboard';
+  if (!n || typeof n !== 'string') return def;
+  if (!n.startsWith('/') || n.startsWith('//') || n.length > 200) return def;
+  return n;
+}
 
 auth.post('/logout', async (c) => {
   const cookie = c.req.header('cookie') ?? '';
