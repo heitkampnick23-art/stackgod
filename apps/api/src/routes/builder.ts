@@ -286,6 +286,21 @@ of this app pays for usage out of their plan's monthly_messages quota — when
 they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
 display ('Have the owner upgrade at stakgod.com/pricing').
 
+────  sg.upload  ────  Real file uploads to per-app R2 with public URLs.
+
+  // From a <input type="file"> change handler:
+  const { url, key, mime, size } = await sg.upload(file);
+  // url is publicly served at apps.stakgod.com/{slug}/uploads/{ownerId}/{key}
+  // — drop it directly into <img>, <audio>, <video>, <a download>, etc.
+
+  await sg.uploads.list();          // current user's uploads (sorted newest first)
+  await sg.uploads.del(key);        // remove
+
+Limits: 10 MB per file. Allowed mimes: png/jpg/webp/gif/svg/mp3/wav/m4a/ogg/
+mp4/mov/webm/pdf/zip/json/csv/md/txt. If the user is signed in via sg.auth,
+uploads are scoped to their user_id (so list() returns only theirs); otherwise
+they're scoped per-IP-hash so an anonymous visitor can manage their own files.
+
 ────  sg.payments  ────  Charge customers via Stripe Checkout. Money lands in the BUILDER's Stripe Connect account; Stakgod takes 10% application fee automatically.
 
   // Single tip

@@ -109,6 +109,11 @@ image:({prompt,steps})=>J('/ai/image',{method:'POST',headers:{'content-type':'ap
 payments:{
 checkout:o=>J('/payments/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
 session:id=>J('/payments/session?id='+encodeURIComponent(id)),
+},
+async upload(file,opts){const fd=new FormData();fd.append('file',file,(opts&&opts.name)||(file&&file.name)||'file');const r=await fetch(B+'/uploads',{method:'POST',body:fd});const t=await r.text();let j=null;try{j=t?JSON.parse(t):null}catch{}if(!r.ok)throw Object.assign(new Error(j&&j.error||t||r.status),{status:r.status,detail:j});return j;},
+uploads:{
+list:()=>J('/uploads'),
+del:k=>J('/uploads?key='+encodeURIComponent(k),{method:'DELETE'}),
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -134,6 +139,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'auth')     return handleAuth(req, env, slug, sub.slice(1));
   if (sub[0] === 'ai')       return handleAi(req, env, slug, sub.slice(1));
   if (sub[0] === 'payments') return handlePayments(req, env, slug, sub.slice(1));
+  if (sub[0] === 'uploads')  return handleUploads(req, env, slug);
   return text('not found', 404);
 }
 
@@ -477,6 +483,100 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.upload ----------
+//
+// Files land in R2 at apps/{slug}/uploads/{ownerId}/{random}.{ext} which is
+// already publicly served by our static-asset path. Metadata kept in KV
+// so we can list per-user without scanning R2.
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_MIMES = new Set([
+  'image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/svg+xml',
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/webm', 'audio/ogg', 'audio/mp4',
+  'video/mp4', 'video/webm', 'video/quicktime',
+  'application/pdf', 'application/json', 'application/zip',
+  'text/plain', 'text/csv', 'text/markdown',
+]);
+const EXT_BY_MIME: Record<string, string> = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif', 'image/svg+xml': 'svg',
+  'audio/mpeg': 'mp3', 'audio/mp3': 'mp3', 'audio/wav': 'wav', 'audio/webm': 'weba', 'audio/ogg': 'ogg', 'audio/mp4': 'm4a',
+  'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+  'application/pdf': 'pdf', 'application/json': 'json', 'application/zip': 'zip',
+  'text/plain': 'txt', 'text/csv': 'csv', 'text/markdown': 'md',
+};
+
+async function handleUploads(req: Request, env: Env, slug: string): Promise<Response> {
+  const url = new URL(req.url);
+  const user = await currentUser(req, env, slug);
+  const ownerId = user?.id ?? `anon-${hashIp(req)}`;
+  const metaPrefix = `appup:${slug}:${ownerId}:`;
+
+  if (req.method === 'POST') {
+    const ct = (req.headers.get('content-type') ?? '').toLowerCase();
+    let body: ArrayBuffer; let name = 'file'; let mime = 'application/octet-stream';
+
+    if (ct.startsWith('multipart/form-data')) {
+      const fd = await req.formData();
+      const f = fd.get('file');
+      if (!(f instanceof File)) return json({ error: 'missing_file' }, 400);
+      mime = f.type || mime;
+      name = f.name || 'file';
+      body = await f.arrayBuffer();
+    } else {
+      // Raw body upload — name + content-type from headers/query
+      mime = ct || mime;
+      name = url.searchParams.get('name') || 'file';
+      body = await req.arrayBuffer();
+    }
+
+    if (body.byteLength === 0) return json({ error: 'empty_file' }, 400);
+    if (body.byteLength > MAX_FILE_BYTES) return json({ error: 'file_too_large', max_bytes: MAX_FILE_BYTES }, 413);
+    if (!ALLOWED_MIMES.has(mime)) return json({ error: 'mime_not_allowed', mime, allowed: [...ALLOWED_MIMES] }, 415);
+
+    const ext = EXT_BY_MIME[mime] ?? 'bin';
+    const key = `${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}.${ext}`;
+    const r2Key = `apps/${slug}/uploads/${ownerId}/${key}`;
+    await env.APPS.put(r2Key, body, { httpMetadata: { contentType: mime } });
+
+    const safeName = name.replace(/[^\w. -]/g, '').slice(0, 200);
+    const meta = { key, name: safeName, mime, size: body.byteLength, ts: Math.floor(Date.now() / 1000), owner: ownerId };
+    await env.APP_DATA.put(metaPrefix + key, JSON.stringify(meta));
+    return json({
+      url: `${url.origin}/${slug}/uploads/${ownerId}/${key}`,
+      key, name: safeName, mime, size: meta.size,
+    });
+  }
+
+  if (req.method === 'GET') {
+    const list = await env.APP_DATA.list({ prefix: metaPrefix, limit: 200 });
+    const items = await Promise.all(list.keys.map(async (k) => {
+      const v = await env.APP_DATA.get(k.name);
+      if (!v) return null;
+      const m = JSON.parse(v) as { key: string; name: string; mime: string; size: number; ts: number };
+      return { ...m, url: `${url.origin}/${slug}/uploads/${ownerId}/${m.key}` };
+    }));
+    return json(items.filter(Boolean).sort((a, b) => (b!.ts - a!.ts)));
+  }
+
+  if (req.method === 'DELETE') {
+    const key = url.searchParams.get('key');
+    if (!key) return json({ error: 'missing_key' }, 400);
+    await env.APPS.delete(`apps/${slug}/uploads/${ownerId}/${key}`);
+    await env.APP_DATA.delete(metaPrefix + key);
+    return json({ ok: true });
+  }
+
+  return text('method not allowed', 405);
+}
+
+function hashIp(req: Request): string {
+  // Anonymous-but-deduplicated owner key (best-effort, not PII).
+  const ip = req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ?? '0.0.0.0';
+  let h = 2166136261;
+  for (let i = 0; i < ip.length; i++) { h ^= ip.charCodeAt(i); h = (h * 16777619) >>> 0; }
+  return h.toString(36);
 }
 
 // ---------- helpers ----------
