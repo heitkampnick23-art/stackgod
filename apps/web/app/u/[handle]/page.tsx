@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 export const runtime = 'edge';
 export const revalidate = 60;
 
-interface Props { params: { handle: string } }
+interface Props { params: Promise<{ handle: string }> }
 interface ProfileResp {
   profile: {
     handle: string;
@@ -26,7 +26,8 @@ async function load(handle: string): Promise<ProfileResp | null> {
 }
 
 export async function generateMetadata({ params }: Props) {
-  const data = await load(params.handle);
+  const { handle } = await params;
+  const data = await load(handle);
   if (!data) return { title: 'Builder not found' };
   const name = data.profile.name || `@${data.profile.handle}`;
   return {
@@ -37,7 +38,8 @@ export async function generateMetadata({ params }: Props) {
 }
 
 export default async function ProfilePage({ params }: Props) {
-  const data = await load(params.handle);
+  const { handle } = await params;
+  const data = await load(handle);
   if (!data) return notFound();
   const { profile, apps } = data;
 

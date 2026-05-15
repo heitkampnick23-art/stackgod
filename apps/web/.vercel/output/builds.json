@@ -16,21 +16,7 @@
       "config": {
         "zeroConfig": true,
         "framework": "nextjs"
-      },
-      "error": {
-        "name": "Error",
-        "stack": "Error: Command \"npm run build\" exited with 1\n    at ChildProcess.<anonymous> (/Users/head/stackgod/node_modules/@vercel/build-utils/dist/index.js:23166:9)\n    at ChildProcess.emit (node:events:524:28)\n    at ChildProcess.emit (node:domain:489:12)\n    at maybeClose (node:internal/child_process:1104:16)\n    at ChildProcess._handle.onexit (node:internal/child_process:304:5)",
-        "message": "Command \"npm run build\" exited with 1",
-        "hideStackTrace": true,
-        "code": "BUILD_UTILS_SPAWN_1"
       }
     }
-  ],
-  "error": {
-    "name": "Error",
-    "stack": "Error: Command \"npm run build\" exited with 1\n    at ChildProcess.<anonymous> (/Users/head/stackgod/node_modules/@vercel/build-utils/dist/index.js:23166:9)\n    at ChildProcess.emit (node:events:524:28)\n    at ChildProcess.emit (node:domain:489:12)\n    at maybeClose (node:internal/child_process:1104:16)\n    at ChildProcess._handle.onexit (node:internal/child_process:304:5)",
-    "message": "Command \"npm run build\" exited with 1",
-    "hideStackTrace": true,
-    "code": "BUILD_UTILS_SPAWN_1"
-  }
+  ]
 }
