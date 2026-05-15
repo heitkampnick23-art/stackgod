@@ -28,6 +28,7 @@ database_id = "91355169-4ad4-4825-a468-9c830f9dae27"
 # secrets set via wrangler secret put NAME
 # ANTHROPIC_API_KEY  (sg.ai)
 # RESEND_API_KEY     (sg.auth magic links)
+# STRIPE_SECRET_KEY  (sg.payments via Connect account of the app's owner)
 [vars]
 APP_URL = "https://stakgod.com"
 APPS_HOST = "apps.stakgod.com"

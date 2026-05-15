@@ -286,6 +286,31 @@ of this app pays for usage out of their plan's monthly_messages quota — when
 they hit the wall, sg.ai.chat returns a 402 with a friendly message you should
 display ('Have the owner upgrade at stakgod.com/pricing').
 
+────  sg.payments  ────  Charge customers via Stripe Checkout. Money lands in the BUILDER's Stripe Connect account; Stakgod takes 10% application fee automatically.
+
+  // Single tip
+  const { url } = await sg.payments.checkout({
+    items: [{ name: 'Coffee', amount_cents: 500 }],
+    success_url: 'https://apps.stakgod.com/{slug}/?sg_checkout=success',
+  });
+  location.href = url;   // → Stripe-hosted checkout page
+
+  // After redirect back, verify payment:
+  const id = new URLSearchParams(location.search).get('session_id');
+  if (id) { const r = await sg.payments.session(id); if (r.paid) { /* unlock */ } }
+
+  // Multi-line cart
+  await sg.payments.checkout({
+    items: [
+      { name: 'Pro plan',  amount_cents: 1900 },
+      { name: 'Add-on',    amount_cents:  500, quantity: 2 },
+    ],
+  });
+
+If the BUILDER hasn't connected Stripe yet, sg.payments.checkout returns 412
+with { error:'owner_not_connected', connect_url }; show a friendly message
+linking them to connect_url. Min charge \$0.50, max \$20,000 per checkout.
+
 ────  sg.db  ────  REAL BACKEND for PERSISTENT, MULTI-USER DATA
 The platform auto-injects a tiny SDK into every served app. It's backed by Cloudflare KV scoped to this app, so data persists and is shared across all visitors of this app's URL. Use it for anything beyond ephemeral UI state.
 

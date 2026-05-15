@@ -12,6 +12,7 @@ interface Env {
   DB: D1Database;
   ANTHROPIC_API_KEY: string;
   RESEND_API_KEY: string;
+  STRIPE_SECRET_KEY: string;
   APP_URL: string;
   APPS_HOST: string;
 }
@@ -104,6 +105,10 @@ signOut:()=>J('/auth/signout',{method:'POST'}),
 ai:{
 chat:({system,messages,model})=>J('/ai/chat',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({system,messages,model})}),
 image:({prompt,steps})=>J('/ai/image',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt,steps})}),
+},
+payments:{
+checkout:o=>J('/payments/checkout',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
+session:id=>J('/payments/session?id='+encodeURIComponent(id)),
 }};})();</script>`;
 
   const badge = `<div id="__sg_badge__" style="position:fixed;bottom:12px;right:12px;z-index:2147483647;font:500 12px/1 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color-scheme:light dark;display:flex;align-items:center;gap:6px;padding:8px 12px;border-radius:9999px;background:rgba(10,10,15,0.85);color:#f5f5f7;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 4px 20px rgba(0,0,0,0.25),inset 0 1px 0 rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1)">
@@ -125,9 +130,10 @@ image:({prompt,steps})=>J('/ai/image',{method:'POST',headers:{'content-type':'ap
 // ---------- Router ----------
 
 async function handleApi(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
-  if (sub[0] === 'db')   return handleDb(req, env, slug, sub.slice(1));
-  if (sub[0] === 'auth') return handleAuth(req, env, slug, sub.slice(1));
-  if (sub[0] === 'ai')   return handleAi(req, env, slug, sub.slice(1));
+  if (sub[0] === 'db')       return handleDb(req, env, slug, sub.slice(1));
+  if (sub[0] === 'auth')     return handleAuth(req, env, slug, sub.slice(1));
+  if (sub[0] === 'ai')       return handleAi(req, env, slug, sub.slice(1));
+  if (sub[0] === 'payments') return handlePayments(req, env, slug, sub.slice(1));
   return text('not found', 404);
 }
 
@@ -353,6 +359,124 @@ async function handleAi(req: Request, env: Env, slug: string, sub: string[]): Pr
   }
 
   return text('not found', 404);
+}
+
+// ---------- sg.payments ----------
+//
+// Stripe Checkout via the BUILDER's Connect account.
+// 10% application_fee_amount goes to Stakgod (matches Stripe Connect setup).
+// Builders must connect Stripe first via /dashboard.
+
+interface CheckoutItem { name: string; amount_cents: number; quantity?: number; description?: string; }
+interface CheckoutBody {
+  items: CheckoutItem[];
+  mode?: 'payment' | 'subscription_one_off';
+  success_url?: string;
+  cancel_url?: string;
+  customer_email?: string;
+  metadata?: Record<string, string>;
+}
+
+const STAKGOD_FEE_BPS = 1000; // 10.00%
+const MAX_ITEMS = 10;
+const MAX_AMOUNT_CENTS = 2_000_000; // $20k cap per checkout
+
+async function handlePayments(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
+  const url = new URL(req.url);
+
+  if (sub[0] === 'checkout' && req.method === 'POST') {
+    const body = await req.json<CheckoutBody>();
+    if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > MAX_ITEMS) {
+      return json({ error: 'invalid_items', max: MAX_ITEMS }, 400);
+    }
+    let total = 0;
+    for (const it of body.items) {
+      if (!it.name || typeof it.amount_cents !== 'number' || it.amount_cents < 50) return json({ error: 'invalid_item', detail: 'each item needs name + amount_cents>=50' }, 400);
+      total += it.amount_cents * (it.quantity ?? 1);
+    }
+    if (total > MAX_AMOUNT_CENTS) return json({ error: 'amount_too_large', max_cents: MAX_AMOUNT_CENTS }, 400);
+
+    // Resolve owner + their Stripe Connect account.
+    const owner = await env.DB.prepare(
+      `SELECT u.id, u.stripe_connect_account_id FROM apps a JOIN users u ON u.id = a.user_id WHERE a.slug=?`
+    ).bind(slug).first<{ id: string; stripe_connect_account_id: string | null }>();
+    if (!owner) return json({ error: 'app_not_found' }, 404);
+    if (!owner.stripe_connect_account_id) {
+      return json({
+        error: 'owner_not_connected',
+        message: `This app's owner hasn't connected Stripe yet, so payments can't be collected.`,
+        connect_url: `${env.APP_URL}/dashboard`,
+      }, 412);
+    }
+
+    const fee = Math.floor((total * STAKGOD_FEE_BPS) / 10_000);
+    const successDefault = `${url.origin}/${slug}/?sg_checkout=success`;
+    const cancelDefault  = `${url.origin}/${slug}/?sg_checkout=cancelled`;
+    const params = new URLSearchParams();
+    params.set('mode', 'payment');
+    params.set('success_url', validUrl(body.success_url, slug, env) ?? successDefault);
+    params.set('cancel_url',  validUrl(body.cancel_url,  slug, env) ?? cancelDefault);
+    params.set('payment_intent_data[application_fee_amount]', String(fee));
+    if (body.customer_email) params.set('customer_email', body.customer_email);
+    params.set('metadata[stakgod_slug]', slug);
+    params.set('metadata[stakgod_owner]', owner.id);
+    if (body.metadata) for (const [k, v] of Object.entries(body.metadata)) params.set(`metadata[${'app_' + k}]`, String(v).slice(0, 500));
+    body.items.forEach((it, i) => {
+      params.set(`line_items[${i}][quantity]`, String(it.quantity ?? 1));
+      params.set(`line_items[${i}][price_data][currency]`, 'usd');
+      params.set(`line_items[${i}][price_data][unit_amount]`, String(it.amount_cents));
+      params.set(`line_items[${i}][price_data][product_data][name]`, it.name.slice(0, 200));
+      if (it.description) params.set(`line_items[${i}][price_data][product_data][description]`, it.description.slice(0, 500));
+    });
+
+    const r = await fetch('https://api.stripe.com/v1/checkout/sessions', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${env.STRIPE_SECRET_KEY}`,
+        'content-type': 'application/x-www-form-urlencoded',
+        'stripe-account': owner.stripe_connect_account_id,
+      },
+      body: params.toString(),
+    });
+    if (!r.ok) return json({ error: 'stripe_failed', detail: (await r.text()).slice(0, 800) }, 502);
+    const s = await r.json<{ id: string; url: string }>();
+    return json({ url: s.url, session_id: s.id });
+  }
+
+  // Verify a checkout completed (called from the success_url page).
+  if (sub[0] === 'session' && req.method === 'GET') {
+    const sessionId = url.searchParams.get('id');
+    if (!sessionId || !/^cs_(live|test)_/.test(sessionId)) return json({ error: 'bad_session_id' }, 400);
+    const owner = await env.DB.prepare(
+      `SELECT u.stripe_connect_account_id FROM apps a JOIN users u ON u.id=a.user_id WHERE a.slug=?`
+    ).bind(slug).first<{ stripe_connect_account_id: string | null }>();
+    if (!owner?.stripe_connect_account_id) return json({ error: 'owner_not_connected' }, 412);
+    const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${sessionId}`, {
+      headers: { authorization: `Bearer ${env.STRIPE_SECRET_KEY}`, 'stripe-account': owner.stripe_connect_account_id },
+    });
+    if (!r.ok) return json({ error: 'stripe_failed' }, 502);
+    const s = await r.json<{ id: string; payment_status: string; amount_total: number; currency: string; customer_email: string | null; metadata: Record<string, string> }>();
+    return json({
+      id: s.id,
+      paid: s.payment_status === 'paid',
+      amount_cents: s.amount_total,
+      currency: s.currency,
+      customer_email: s.customer_email,
+      metadata: s.metadata,
+    });
+  }
+
+  return text('not found', 404);
+}
+
+function validUrl(u: string | undefined, slug: string, env: Env): string | null {
+  if (!u) return null;
+  try {
+    const parsed = new URL(u);
+    // Only allow same-app or stakgod-host redirects.
+    if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
+    return null;
+  } catch { return null; }
 }
 
 // ---------- helpers ----------
