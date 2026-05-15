@@ -20,6 +20,8 @@ import { discover } from './routes/discover';
 import { stats } from './routes/stats';
 import { changelog } from './routes/changelog';
 import { admin } from './routes/admin';
+import { digest } from './routes/digest';
+import { runWeeklyDigests } from './lib/run-digests';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 export { BuildRoom } from './do/build-room';
 
@@ -59,10 +61,18 @@ app.route('/tips', tips);
 app.route('/stats', stats);
 app.route('/changelog', changelog);
 app.route('/admin', admin);
+app.route('/digest', digest);
 
 export default {
   fetch: app.fetch,
   async queue(batch: MessageBatch<BuildMsg>, env: Env): Promise<void> {
     await handleBuildBatch(batch, env);
+  },
+  // Cron triggers (see wrangler.toml [triggers]). One handler dispatches by cron string.
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // "0 16 * * 1" = Monday 16:00 UTC = 12pm ET / 9am PT (highest open rate)
+    if (event.cron === '0 16 * * 1') {
+      ctx.waitUntil(runWeeklyDigests(env).then(() => undefined));
+    }
   },
 };

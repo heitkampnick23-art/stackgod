@@ -59,6 +59,10 @@ dead_letter_queue = "stackgod-builds-dlq"
 APP_URL = "https://stakgod.com"
 API_URL = "https://api.stakgod.com"
 
+# Weekly builder digest — Monday noon ET (16:00 UTC).
+[triggers]
+crons = ["0 16 * * 1"]
+
 # secrets set via: wrangler secret put NAME
 # ANTHROPIC_API_KEY
 # STRIPE_SECRET_KEY
