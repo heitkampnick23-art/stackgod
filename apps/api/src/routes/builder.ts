@@ -12,7 +12,10 @@ import { generateIconIfMissing } from './icons';
 
 export const builder = new Hono<{ Bindings: Env; Variables: Variables }>();
 
-interface ChatBody { app_id: string; message: string; intent?: 'edit' | 'generate' | 'plan' | 'fix'; }
+interface ImageAttachment { mime: string; data: string; }   // base64
+interface ChatBody { app_id: string; message: string; intent?: 'edit' | 'generate' | 'plan' | 'fix'; images?: ImageAttachment[]; }
+const ALLOWED_IMG_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+const MAX_IMAGES = 5;
 
 const MAX_HISTORY = 20; // last N messages; older summarized as "(prior)" by us
 const MAX_HTML_IN_CONTEXT = 80_000; // chars; ~20k tokens — Claude can handle full files
@@ -37,11 +40,22 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
   const currentHtml = currentObj ? (await currentObj.text()).slice(0, MAX_HTML_IN_CONTEXT) : null;
 
   // Persist the new user message NOW so streaming UI can re-load it.
+  // Tag the persisted text with [📎 N image(s)] so chat history shows what was attached.
+  const imgsSummary = (body.images ?? []).slice(0, MAX_IMAGES).filter((im) => im && ALLOWED_IMG_MIMES.has(im.mime)).length;
+  const persistedText = imgsSummary > 0 ? `${body.message}\n[📎 ${imgsSummary} image${imgsSummary === 1 ? '' : 's'} attached]` : body.message;
   await c.env.DB.prepare(
     `INSERT INTO messages (id, conversation_id, role, content) VALUES (?, ?, 'user', ?)`
-  ).bind(crypto.randomUUID(), convoId, body.message).run();
+  ).bind(crypto.randomUUID(), convoId, persistedText).run();
 
-  const messages: { role: 'user' | 'assistant'; content: string }[] = [];
+  // Validate images (if any). Up to 5, allowed mimes only.
+  const incomingImages = (body.images ?? []).slice(0, MAX_IMAGES).filter((im) =>
+    im && typeof im.data === 'string' && im.data.length > 0 && ALLOWED_IMG_MIMES.has(im.mime)
+  );
+
+  type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+  type Msg = { role: 'user' | 'assistant'; content: string | ContentBlock[] };
+
+  const messages: Msg[] = [];
   if (currentHtml) {
     messages.push({
       role: 'user',
@@ -50,7 +64,18 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
     messages.push({ role: 'assistant', content: `Got it — I'll edit this in place. What would you like to change?` });
   }
   for (const m of history.results ?? []) messages.push({ role: m.role, content: m.content });
-  messages.push({ role: 'user', content: body.message });
+
+  // Final user turn — multipart if images attached, else plain string.
+  if (incomingImages.length > 0) {
+    const blocks: ContentBlock[] = [];
+    for (const img of incomingImages) {
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.data } });
+    }
+    blocks.push({ type: 'text', text: body.message || 'Match this design.' });
+    messages.push({ role: 'user', content: blocks });
+  } else {
+    messages.push({ role: 'user', content: body.message });
+  }
 
   const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
   const stream = await client.messages.stream({
@@ -256,6 +281,11 @@ RULES
 - If this is the first message and no current app exists, generate a complete fresh HTML file.
 - Wire EVERY button. Use modern responsive Tailwind layouts. Mobile-first.
 - Brief plain-English summary BEFORE the code block (1-3 sentences max). Then the code block. Nothing after.
+
+VISION INPUT
+- The user may attach screenshots, sketches, mockups, or reference designs. When they do, USE the visual content as the primary source of truth for layout, color, typography, and component arrangement.
+- If the user attaches an image without text, default behavior is "build/update the app to match this design".
+- If they attach an image AND give text instructions, the text wins for intent (e.g. "use this color palette but keep my layout") and the image is the visual reference.
 
 MULTI-FILE OUTPUT (optional)
 For richer apps, you may emit additional files alongside the main index.html:

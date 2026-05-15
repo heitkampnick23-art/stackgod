@@ -5,6 +5,21 @@ import { useSearchParams } from 'next/navigation';
 const API = 'https://api.stakgod.com';
 
 interface Msg { role: 'user' | 'assistant'; text: string; }
+interface Attachment { name: string; mime: string; size: number; b64: string; preview: string; }
+const ALLOWED_IMG = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+function fileToBase64(f: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const result = r.result as string;
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    r.onerror = reject;
+    r.readAsDataURL(f);
+  });
+}
 
 function BuildInner() {
   const params = useSearchParams();
@@ -39,6 +54,33 @@ function BuildInner() {
   const [showVersions, setShowVersions] = useState(false);
   const [reverting, setReverting] = useState<number | null>(null);
   const [streamChars, setStreamChars] = useState(0);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [dragOver, setDragOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  // Paste image handler — works anywhere on the page (Cmd+V).
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const it of items) {
+        if (it.kind === 'file' && it.type.startsWith('image/')) {
+          const f = it.getAsFile(); if (f) addFile(f);
+        }
+      }
+    }
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  });
+
+  async function addFile(f: File) {
+    if (!ALLOWED_IMG.includes(f.type)) { alert(`${f.type} not supported. Use PNG, JPG, WEBP, or GIF.`); return; }
+    if (f.size > 5 * 1024 * 1024) { alert('Image too big — max 5 MB.'); return; }
+    const b64 = await fileToBase64(f);
+    setAttachments((a) => a.length >= 5 ? a : [...a, { name: f.name, mime: f.type, size: f.size, b64, preview: `data:${f.type};base64,${b64}` }]);
+  }
+  async function addFiles(fs: FileList | File[]) { for (const f of Array.from(fs)) await addFile(f); }
+  function removeAttachment(i: number) { setAttachments((a) => a.filter((_, idx) => idx !== i)); }
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<{ selector: string; html: string; text: string } | null>(null);
   const [editPrompt, setEditPrompt] = useState('');
@@ -154,23 +196,29 @@ function BuildInner() {
   }
 
   async function send() {
-    if (!input.trim() || streaming) return;
+    if ((!input.trim() && attachments.length === 0) || streaming) return;
     const text = input;
     setInput('');
-    await sendMessage(text, text);
+    const imgs = attachments.slice();
+    setAttachments([]);
+    await sendMessage(text || (imgs.length ? 'Match this design.' : ''), text || (imgs.length ? `📎 ${imgs.length} image${imgs.length === 1 ? '' : 's'}` : ''), imgs);
   }
 
-  async function sendMessage(realMessage: string, displayInChat: string) {
-    if (!realMessage.trim() || streaming) return;
+  async function sendMessage(realMessage: string, displayInChat: string, images: Attachment[] = []) {
+    if (!realMessage.trim() && images.length === 0) return;
+    if (streaming) return;
     const text = realMessage;
-    setMsgs((m) => [...m, { role: 'user', text: displayInChat }, { role: 'assistant', text: '' }]);
+    setMsgs((m) => [...m, { role: 'user', text: displayInChat + (images.length ? `\n\n[📎 ${images.length} image${images.length === 1 ? '' : 's'} attached]` : '') }, { role: 'assistant', text: '' }]);
     setStreaming(true);
     try {
       const id = await ensureApp();
       const r = await fetch(`${API}/builder/chat`, {
         method: 'POST', credentials: 'include',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ app_id: id, message: text, intent: 'edit' }),
+        body: JSON.stringify({
+          app_id: id, message: text, intent: 'edit',
+          images: images.map((a) => ({ mime: a.mime, data: a.b64 })),
+        }),
       });
       if (r.status === 402) {
         const j = await r.json();
@@ -233,15 +281,42 @@ function BuildInner() {
           ))}
           <div ref={endRef} />
         </div>
-        <div className="p-4 border-t border-white/10">
-          <div className="flex gap-2">
+        <div
+          className={`p-4 border-t border-white/10 ${dragOver ? 'bg-flame/10 border-flame/40' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (e.dataTransfer.files?.length) addFiles(e.dataTransfer.files);
+          }}>
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((a, i) => (
+                <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border border-white/10 group">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={a.preview} alt={a.name} className="w-full h-full object-cover" />
+                  <button onClick={() => removeAttachment(i)} className="absolute top-0.5 right-0.5 size-4 rounded-full bg-black/70 text-white text-[10px] leading-none opacity-0 group-hover:opacity-100">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 items-end">
+            <button
+              onClick={() => fileInput.current?.click()}
+              title="Attach screenshots / sketches (Cmd+V to paste)"
+              className="size-11 rounded-full bg-white/10 hover:bg-white/20 grid place-items-center text-lg shrink-0">
+              📎
+            </button>
+            <input ref={fileInput} type="file" accept={ALLOWED_IMG.join(',')} multiple className="hidden"
+              onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && send()}
-              placeholder={appId ? 'What do you want to change?' : 'Describe your app…'}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
+              placeholder={dragOver ? 'Drop image to attach…' : attachments.length > 0 ? 'Optional: describe what to change…' : appId ? 'What do you want to change?' : 'Describe your app…'}
               className="flex-1 rounded-full bg-white/10 px-5 py-3 outline-none focus:ring-2 focus:ring-flame backdrop-blur-md" />
-            <button onClick={send} disabled={streaming} className="btn-primary disabled:opacity-50">
+            <button onClick={send} disabled={streaming || (!input.trim() && attachments.length === 0)} className="btn-primary disabled:opacity-50">
               {streaming ? '…' : 'Send'}
             </button>
           </div>
