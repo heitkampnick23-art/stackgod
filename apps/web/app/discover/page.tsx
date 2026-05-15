@@ -119,7 +119,7 @@ export default function Discover() {
 
       {cursor !== null && (
         <div className="mt-8 text-center">
-          <button onClick={() => load(cursor, q)} disabled={loading} className="btn-ghost disabled:opacity-50">
+          <button onClick={() => load(cursor, q, sort)} disabled={loading} className="btn-ghost disabled:opacity-50">
             {loading ? 'Loading…' : 'Load more'}
           </button>
         </div>
