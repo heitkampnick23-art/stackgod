@@ -49,7 +49,10 @@ discover.get('/', async (c) => {
     view_count: a.view_count,
     fork_price_cents: a.fork_price_cents,
   }));
-  return c.json({ apps, next_cursor: hasMore ? cursor + limit : null, sort });
+  return c.json({ apps, next_cursor: hasMore ? cursor + limit : null, sort }, 200, {
+    'cache-control': 'public, max-age=60, stale-while-revalidate=300, s-maxage=60',
+    'cdn-cache-control': 'public, max-age=60',
+  });
 });
 
 // Top-10 leaderboard for the Discover hero strip. Cached 60s at the edge.
@@ -69,5 +72,8 @@ discover.get('/leaderboard', async (c) => {
     url: a.custom_domain ? `https://${a.custom_domain}/` : `https://apps.stakgod.com/${a.slug}/`,
     view_count: a.view_count,
   }));
-  return c.json({ apps: top }, 200, { 'cache-control': 'public, max-age=60' });
+  return c.json({ apps: top }, 200, {
+    'cache-control': 'public, max-age=60, stale-while-revalidate=600, s-maxage=60',
+    'cdn-cache-control': 'public, max-age=60',
+  });
 });

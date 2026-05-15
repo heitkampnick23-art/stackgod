@@ -27,6 +27,10 @@ stats.get('/public', async (c) => {
       builder_revenue_week_cents: payouts?.gross ?? 0,
     },
     200,
-    { 'cache-control': 'public, max-age=60', 'access-control-allow-origin': '*' }
+    {
+      'cache-control': 'public, max-age=60, stale-while-revalidate=300, s-maxage=60',
+      'cdn-cache-control': 'public, max-age=60',
+      'access-control-allow-origin': '*',
+    }
   );
 });

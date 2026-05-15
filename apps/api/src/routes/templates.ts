@@ -15,4 +15,7 @@ export const TEMPLATES = [
   { slug: 'tpl-mentor',         name: 'Startup Mentor',    emoji: '🧠', blurb: 'AI co-founder w/ memory + sign-in. Demos sg.auth + sg.ai + sg.db together.' },
 ];
 
-templates.get('/', (c) => c.json({ templates: TEMPLATES }));
+templates.get('/', (c) => c.json({ templates: TEMPLATES }, 200, {
+  'cache-control': 'public, max-age=300, stale-while-revalidate=3600, s-maxage=300',
+  'cdn-cache-control': 'public, max-age=300',
+}));

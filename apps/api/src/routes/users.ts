@@ -60,7 +60,10 @@ users.get('/leaderboard', async (c) => {
   }));
 
   builders.sort((a, b) => by === 'revenue' ? (b.revenue_cents - a.revenue_cents) : (b.total_views - a.total_views));
-  return c.json({ builders: builders.slice(0, limit), by }, 200, { 'cache-control': 'public, max-age=300' });
+  return c.json({ builders: builders.slice(0, limit), by }, 200, {
+    'cache-control': 'public, max-age=300, stale-while-revalidate=900, s-maxage=300',
+    'cdn-cache-control': 'public, max-age=300',
+  });
 });
 
 users.get('/me', requireAuth, async (c) => {

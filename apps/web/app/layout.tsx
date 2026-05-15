@@ -62,7 +62,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div>
               <div className="text-white font-semibold mb-2">Community</div>
-              <ul className="space-y-1"><li><a href="https://github.com/heitkampnick23-art/stackgod" target="_blank" rel="noreferrer">GitHub</a></li><li><Link href="/support">Founders Fund</Link></li><li><a href="mailto:hello@stakgod.com">Contact</a></li></ul>
+              <ul className="space-y-1">
+                <li><a href="https://github.com/heitkampnick23-art/stackgod" target="_blank" rel="noreferrer">⭐ GitHub</a></li>
+                <li><a href="https://discord.gg/stakgod" target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5"><span className="size-2 rounded-full bg-[#5865F2]" />Discord</a></li>
+                <li><a href="https://twitter.com/stakgod" target="_blank" rel="noreferrer">𝕏 / Twitter</a></li>
+                <li><Link href="/support">🪙 Founders Fund</Link></li>
+                <li><a href="mailto:hello@stakgod.com">📨 Contact</a></li>
+              </ul>
             </div>
             <div>
               <div className="text-white font-semibold mb-2">Legal</div>
