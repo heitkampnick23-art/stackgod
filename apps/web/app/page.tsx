@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import LiveStats from './_components/live-stats';
 
 export default function Home() {
   return (
@@ -20,6 +21,7 @@ export default function Home() {
             <Link href="/showcase" className="btn-ghost text-lg px-8 py-4">See it in action</Link>
           </div>
           <div className="mt-12 text-xs text-white/50">5 free AI messages a day. No card. Upgrade when you outgrow it.</div>
+          <LiveStats />
         </div>
       </section>
 

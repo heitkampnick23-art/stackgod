@@ -17,6 +17,8 @@ import { analytics } from './routes/analytics';
 import { users } from './routes/users';
 import { appDomain } from './routes/app-domain';
 import { discover } from './routes/discover';
+import { stats } from './routes/stats';
+import { changelog } from './routes/changelog';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 export { BuildRoom } from './do/build-room';
 
@@ -53,6 +55,8 @@ app.route('/connect', connect);
 app.route('/builds', builds);
 app.route('/templates', templates);
 app.route('/tips', tips);
+app.route('/stats', stats);
+app.route('/changelog', changelog);
 
 export default {
   fetch: app.fetch,

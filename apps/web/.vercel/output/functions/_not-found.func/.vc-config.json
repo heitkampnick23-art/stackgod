@@ -57,6 +57,7 @@
     ".next/server/webpack-runtime.js": ".next/server/webpack-runtime.js",
     ".next/server/chunks/295.js": ".next/server/chunks/295.js",
     ".next/server/chunks/584.js": ".next/server/chunks/584.js",
+    ".next/server/chunks/603.js": ".next/server/chunks/603.js",
     ".next/server/app/_not-found/page_client-reference-manifest.js": ".next/server/app/_not-found/page_client-reference-manifest.js",
     ".next/server/app/_not-found/page.js": ".next/server/app/_not-found/page.js",
     ".next/server/pages/_app.js": ".next/server/pages/_app.js",
