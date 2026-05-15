@@ -1,7 +1,9 @@
 name: Deploy
+# Manual-only. Click 'Run workflow' in GitHub Actions to deploy from CI.
+# Day-to-day deploys happen from local via wrangler so this stays dormant.
+# To re-enable push-based auto-deploy, add `push: { branches: [main] }` here
+# AND set CLOUDFLARE_API_TOKEN as a repo secret with D1+Workers+Pages perms.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 jobs:
