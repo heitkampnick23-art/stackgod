@@ -4,6 +4,7 @@
 import { Hono } from 'hono';
 import type { Env, Variables } from '../types';
 import { verifyIdToken, type IdTokenClaims } from '../lib/jwt';
+import { sendWelcomeEmail } from '../lib/welcome-email';
 
 export const oauth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -73,12 +74,13 @@ oauth.get('/google/callback', async (c) => {
   }
   if (!claims.email) return c.text('no email in token', 400);
 
-  const { sessionToken } = await upsertUserAndSession(c.env, {
+  const { sessionToken, isNew } = await upsertUserAndSession(c.env, {
     email: claims.email,
     name: claims.name ?? null,
     avatar_url: claims.picture ?? null,
     google_sub: claims.sub,
   });
+  if (isNew) c.executionCtx.waitUntil(sendWelcomeEmail(c.env, claims.email, claims.name));
   return new Response(null, {
     status: 302,
     headers: { location: `${c.env.APP_URL}${next}`, 'set-cookie': SESSION_COOKIE(sessionToken) },
@@ -138,12 +140,13 @@ oauth.post('/apple/callback', async (c) => {
     } catch {}
   }
 
-  const { sessionToken } = await upsertUserAndSession(c.env, {
+  const { sessionToken, isNew } = await upsertUserAndSession(c.env, {
     email: claims.email,
     name: displayName,
     avatar_url: null,
     apple_sub: claims.sub,
   });
+  if (isNew) c.executionCtx.waitUntil(sendWelcomeEmail(c.env, claims.email, displayName));
   return new Response(null, {
     status: 302,
     headers: { location: `${c.env.APP_URL}${next}`, 'set-cookie': SESSION_COOKIE(sessionToken) },
@@ -171,9 +174,10 @@ interface UpsertInput {
   apple_sub?: string;
 }
 
-async function upsertUserAndSession(env: Env, u: UpsertInput): Promise<{ id: string; sessionToken: string }> {
+async function upsertUserAndSession(env: Env, u: UpsertInput): Promise<{ id: string; sessionToken: string; isNew: boolean }> {
   let row = await env.DB.prepare(`SELECT id FROM users WHERE email=?`).bind(u.email).first<{ id: string }>();
   let id: string;
+  let isNew = false;
   if (row) {
     id = row.id;
     await env.DB.prepare(
@@ -182,6 +186,7 @@ async function upsertUserAndSession(env: Env, u: UpsertInput): Promise<{ id: str
     ).bind(u.name, u.avatar_url, u.google_sub ?? null, u.apple_sub ?? null, id).run();
   } else {
     id = crypto.randomUUID();
+    isNew = true;
     await env.DB.prepare(
       `INSERT INTO users (id, email, name, avatar_url, google_sub, apple_sub, plan)
        VALUES (?, ?, ?, ?, ?, ?, 'free')`
@@ -191,5 +196,5 @@ async function upsertUserAndSession(env: Env, u: UpsertInput): Promise<{ id: str
   const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
   await env.DB.prepare(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`)
     .bind(sessionToken, id, expires).run();
-  return { id, sessionToken };
+  return { id, sessionToken, isNew };
 }

@@ -3,6 +3,7 @@
 
 import { Hono } from 'hono';
 import type { Env, Variables } from '../types';
+import { sendWelcomeEmail } from '../lib/welcome-email';
 
 export const auth = new Hono<{ Bindings: Env; Variables: Variables }>();
 
@@ -40,11 +41,14 @@ auth.get('/verify', async (c) => {
   else email = stored;
 
   let user = await c.env.DB.prepare(`SELECT * FROM users WHERE email=?`).bind(email).first<{ id: string }>();
+  let isNew = false;
   if (!user) {
     const id = crypto.randomUUID();
     await c.env.DB.prepare(`INSERT INTO users (id, email, plan) VALUES (?, ?, 'free')`).bind(id, email).run();
     user = { id };
+    isNew = true;
   }
+  if (isNew) c.executionCtx.waitUntil(sendWelcomeEmail(c.env, email));
   const sessionToken = crypto.randomUUID() + crypto.randomUUID();
   const expires = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 30;
   await c.env.DB.prepare(
