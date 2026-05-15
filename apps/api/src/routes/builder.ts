@@ -363,6 +363,32 @@ visitor's IP (privacy: city-level granularity, not GPS-precise).
   // Embed mode strips X-Frame-Options and uses a tiny corner badge instead
   // of the full Remix bar so the embed feels native to the host page.
 
+────  sg.queue  ────  Fire-and-forget background jobs (one-shot, scheduled or delayed).
+                          For RECURRING work, use sg.cron instead.
+
+  // Send a follow-up push 5 minutes after sign-up:
+  await sg.queue.enqueue({
+    delay_seconds: 300,
+    action: { kind: 'push', title: 'Welcome 👋', body_text: 'Try adding your first habit', scope: 'me' },
+  });
+
+  // POST a webhook tomorrow at 9am UTC:
+  await sg.queue.enqueue({
+    run_at: nineAmTomorrowMs,
+    action: { kind: 'webhook', url: 'https://yourserver.com/digest', body: { for: me.id } },
+  });
+
+  // Self-callback (POST a path inside YOUR app — useful for state machines):
+  await sg.queue.enqueue({
+    delay_seconds: 60,
+    action: { kind: 'self', path: '/__webhooks__/checkin' },
+  });
+
+  await sg.queue.list();              // current user's pending jobs
+  await sg.queue.cancel(id);          // remove before it runs
+
+Caller must be signed in (sg.auth). Limit: 200 jobs/app, max 30-day delay.
+
 ────  sg.cron  ────  Schedule recurring server-side tasks (1-minute resolution).
 
   // Push a daily reminder to all subscribers at 9am UTC:

@@ -48,7 +48,7 @@ const MAX_AI_OUTPUT_TOKENS = 1024;
 
 export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runDueTasks(env).then(() => {}));
+    ctx.waitUntil((async () => { await runDueTasks(env); await processQueue(env); })());
   },
 
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -164,6 +164,11 @@ add:t=>J('/cron',{method:'POST',headers:{'content-type':'application/json'},body
 list:()=>J('/cron'),
 del:id=>J('/cron/'+encodeURIComponent(id),{method:'DELETE'}),
 },
+queue:{
+enqueue:o=>J('/queue/enqueue',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(o)}),
+list:()=>J('/queue'),
+cancel:id=>J('/queue/'+encodeURIComponent(id),{method:'DELETE'}),
+},
 async share(o){o=o||{};const u=o.url||(location.origin+location.pathname+'?utm_source=share&utm_campaign=${slug}');const data={title:o.title||document.title,text:o.text||'',url:u};if(navigator.share){try{await navigator.share(data);return{shared:true,via:'native'};}catch(e){if(e.name==='AbortError')return{shared:false,via:'cancelled'};}}try{await navigator.clipboard.writeText(u);return{shared:true,via:'clipboard',url:u};}catch(e){return{shared:false,via:'unsupported',url:u};}},
 embed(opts){const u=new URL(location.origin+location.pathname);u.searchParams.set('embed','1');const w=(opts&&opts.width)||'100%';const h=(opts&&opts.height)||'640';return '<iframe src="'+u.toString()+'" width="'+w+'" height="'+h+'" style="border:0;border-radius:12px" loading="lazy" allow="clipboard-write *"></iframe>';},
 }};})();</script>`;
@@ -198,6 +203,7 @@ async function handleApi(req: Request, env: Env, slug: string, sub: string[]): P
   if (sub[0] === 'geo')      return handleGeo(req);
   if (sub[0] === 'notify')   return handleNotify(req, env, slug, sub.slice(1));
   if (sub[0] === 'cron')     return handleCron(req, env, slug, sub.slice(1));
+  if (sub[0] === 'queue')    return handleQueue(req, env, slug, sub.slice(1));
   return text('not found', 404);
 }
 
@@ -624,6 +630,158 @@ function validUrl(u: string | undefined, slug: string, env: Env): string | null 
     if (parsed.hostname === env.APPS_HOST && parsed.pathname.startsWith(`/${slug}/`)) return u;
     return null;
   } catch { return null; }
+}
+
+// ---------- sg.queue (one-shot delayed jobs) ----------
+//
+// Jobs live in KV keyed by run_at ISO so a prefix scan returns them in order:
+//   appq:{ISO_run_at}:{slug}:{id}  →  JSON job
+// Drained by scheduled() each minute, in addition to recurring cron tasks.
+
+interface QueueJobAction {
+  kind: 'webhook' | 'push' | 'self';
+  url?: string; method?: string; headers?: Record<string, string>; body?: unknown;
+  title?: string; body_text?: string; scope?: 'all' | 'me'; subscriber_owner_id?: string;
+  path?: string; // for self-callback into the app (POST app's URL/path)
+}
+interface QueueJob {
+  id: string; slug: string; owner: string;
+  run_at: number; created_at: number;
+  action: QueueJobAction;
+}
+
+const MAX_QUEUE_JOBS_PER_APP = 200;
+const MAX_QUEUE_DELAY_DAYS = 30;
+const MAX_QUEUE_BATCH_PER_TICK = 50;
+
+function isoSecond(ms: number): string {
+  // 24-char fixed-width ISO so prefix lex order = chronological.
+  return new Date(ms).toISOString().slice(0, 19) + 'Z';
+}
+
+async function handleQueue(req: Request, env: Env, slug: string, sub: string[]): Promise<Response> {
+  const user = await currentUser(req, env, slug);
+  if (!user) return json({ error: 'sign_in_required' }, 401);
+  const ownerId = user.id;
+
+  if (req.method === 'POST' && (sub[0] === undefined || sub[0] === 'enqueue')) {
+    const body = await req.json<{ delay_seconds?: number; run_at?: number; action: QueueJobAction }>();
+    if (!body?.action?.kind) return json({ error: 'missing_action_kind' }, 400);
+    const a = body.action;
+
+    let runAt: number;
+    if (typeof body.run_at === 'number') runAt = body.run_at;
+    else if (typeof body.delay_seconds === 'number') runAt = Date.now() + Math.max(0, body.delay_seconds) * 1000;
+    else runAt = Date.now();
+    const maxRunAt = Date.now() + MAX_QUEUE_DELAY_DAYS * 86400_000;
+    if (runAt > maxRunAt) return json({ error: 'too_far_in_future', max_days: MAX_QUEUE_DELAY_DAYS }, 400);
+
+    if (a.kind === 'webhook' && !a.url) return json({ error: 'webhook_needs_url' }, 400);
+    if (a.kind === 'push'    && !a.title) return json({ error: 'push_needs_title' }, 400);
+    if (a.kind === 'self'    && !a.path)  return json({ error: 'self_needs_path' }, 400);
+
+    // Per-app cap.
+    const existing = await env.APP_DATA.list({ prefix: `appq:`, limit: MAX_QUEUE_JOBS_PER_APP + 1 });
+    const mine = existing.keys.filter((k) => k.name.includes(`:${slug}:`));
+    if (mine.length >= MAX_QUEUE_JOBS_PER_APP) return json({ error: 'queue_limit', limit: MAX_QUEUE_JOBS_PER_APP }, 429);
+
+    const id = crypto.randomUUID();
+    const job: QueueJob = {
+      id, slug, owner: ownerId,
+      run_at: runAt, created_at: Math.floor(Date.now() / 1000),
+      action: {
+        ...a,
+        // For 'push' scope='me' we need to remember WHO 'me' is at enqueue time.
+        ...(a.kind === 'push' && a.scope === 'me' ? { subscriber_owner_id: ownerId } : {}),
+      },
+    };
+    await env.APP_DATA.put(`appq:${isoSecond(runAt)}:${slug}:${id}`, JSON.stringify(job));
+    return json({ ok: true, id, run_at: runAt });
+  }
+
+  if (req.method === 'GET' && sub[0] === undefined) {
+    const list = await env.APP_DATA.list({ prefix: `appq:`, limit: 1000 });
+    const out: QueueJob[] = [];
+    for (const k of list.keys) {
+      if (!k.name.includes(`:${slug}:`)) continue;
+      const raw = await env.APP_DATA.get(k.name);
+      if (raw) {
+        const j = JSON.parse(raw) as QueueJob;
+        if (j.owner === ownerId) out.push(j);
+      }
+    }
+    return json(out.sort((a, b) => a.run_at - b.run_at));
+  }
+
+  if (req.method === 'DELETE' && sub[0]) {
+    const id = sub[0];
+    const list = await env.APP_DATA.list({ prefix: `appq:`, limit: 1000 });
+    const match = list.keys.find((k) => k.name.endsWith(`:${slug}:${id}`));
+    if (!match) return json({ error: 'not_found' }, 404);
+    const raw = await env.APP_DATA.get(match.name);
+    if (raw) {
+      const j = JSON.parse(raw) as QueueJob;
+      if (j.owner !== ownerId) return json({ error: 'forbidden' }, 403);
+    }
+    await env.APP_DATA.delete(match.name);
+    return json({ ok: true });
+  }
+
+  return text('not found', 404);
+}
+
+async function runQueueJob(job: QueueJob, env: Env): Promise<void> {
+  const a = job.action;
+  if (a.kind === 'webhook' && a.url) {
+    try {
+      await fetch(a.url, {
+        method: (a.method ?? 'POST').toUpperCase(),
+        headers: { 'content-type': 'application/json', 'x-stakgod-app': job.slug, 'x-stakgod-job': job.id, ...(a.headers ?? {}) },
+        body: a.body !== undefined ? JSON.stringify(a.body) : '{}',
+      });
+    } catch { /* swallow */ }
+  } else if (a.kind === 'push') {
+    if (a.scope === 'me' && a.subscriber_owner_id) {
+      const list = await env.APP_DATA.list({ prefix: `appsub:${job.slug}:${a.subscriber_owner_id}:`, limit: 50 });
+      await sendToList(env, job.slug, list.keys.map((k) => k.name), { title: a.title!, body: a.body_text });
+    } else {
+      const list = await env.APP_DATA.list({ prefix: `appsub:${job.slug}:`, limit: 1000 });
+      await sendToList(env, job.slug, list.keys.map((k) => k.name), { title: a.title!, body: a.body_text });
+    }
+  } else if (a.kind === 'self' && a.path) {
+    const url = `https://${env.APPS_HOST}/${job.slug}${a.path.startsWith('/') ? a.path : '/' + a.path}`;
+    try { await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', 'x-stakgod-job': job.id }, body: a.body !== undefined ? JSON.stringify(a.body) : '{}' }); } catch {}
+  }
+}
+
+export async function processQueue(env: Env): Promise<{ ran: number }> {
+  const nowIso = isoSecond(Date.now());
+  // KV list returns lex-sorted by key — anything <= "appq:{nowIso}:" is due.
+  const due: string[] = [];
+  let cursor: string | undefined;
+  for (let i = 0; i < 5; i++) {
+    const r = await env.APP_DATA.list({ prefix: 'appq:', cursor, limit: 1000 });
+    for (const k of r.keys) {
+      // Skip anything not yet due based on the key's embedded ISO timestamp.
+      const at = k.name.slice(5, 24); // "appq:".length = 5; ISO = 20 chars
+      if (at <= nowIso) due.push(k.name);
+      else break; // sorted: nothing after this is due either
+    }
+    if (r.list_complete || due.length >= MAX_QUEUE_BATCH_PER_TICK) break;
+    cursor = (r as { cursor?: string }).cursor;
+  }
+  let ran = 0;
+  for (const k of due.slice(0, MAX_QUEUE_BATCH_PER_TICK)) {
+    const raw = await env.APP_DATA.get(k);
+    if (!raw) continue;
+    try {
+      const job = JSON.parse(raw) as QueueJob;
+      await runQueueJob(job, env);
+      ran++;
+    } catch { /* swallow */ }
+    await env.APP_DATA.delete(k);
+  }
+  return { ran };
 }
 
 // ---------- sg.cron (scheduled tasks via Workers cron trigger) ----------
