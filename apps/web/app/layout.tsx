@@ -57,11 +57,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
             <div>
               <div className="text-white font-semibold mb-2">Product</div>
-              <ul className="space-y-1"><li><Link href="/showcase">Showcase</Link></li><li><Link href="/pricing">Pricing</Link></li><li><Link href="/docs">Docs</Link></li></ul>
+              <ul className="space-y-1"><li><Link href="/discover">Discover</Link></li><li><Link href="/templates">Templates</Link></li><li><Link href="/showcase">Showcase</Link></li><li><Link href="/pricing">Pricing</Link></li><li><Link href="/docs">Docs</Link></li><li><Link href="/changelog">Changelog</Link></li></ul>
             </div>
             <div>
-              <div className="text-white font-semibold mb-2">Company</div>
-              <ul className="space-y-1"><li><Link href="/about">About</Link></li><li><a href="mailto:hello@stakgod.com">Contact</a></li></ul>
+              <div className="text-white font-semibold mb-2">Community</div>
+              <ul className="space-y-1"><li><a href="https://github.com/heitkampnick23-art/stackgod" target="_blank" rel="noreferrer">GitHub</a></li><li><Link href="/support">Founders Fund</Link></li><li><a href="mailto:hello@stakgod.com">Contact</a></li></ul>
             </div>
             <div>
               <div className="text-white font-semibold mb-2">Legal</div>
