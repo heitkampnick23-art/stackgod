@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import HeaderActions from './_components/header-actions';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://stakgod.com'),
@@ -35,20 +36,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <header className="sticky top-0 z-50 backdrop-blur-xl backdrop-saturate-150 bg-ink/50 border-b border-white/10">
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
             <Link href="/" className="font-display text-xl tracking-wider"><span className="text-gold">STAK</span>GOD</Link>
-            <nav className="hidden md:flex gap-8 text-sm text-white/70">
+            <nav className="hidden md:flex gap-6 text-sm text-white/70">
               <Link href="/discover" className="hover:text-white">Discover</Link>
               <Link href="/templates" className="hover:text-white">Templates</Link>
-              <Link href="/discover" className="hover:text-white">Discover</Link>
               <Link href="/showcase" className="hover:text-white">Showcase</Link>
               <Link href="/pricing" className="hover:text-white">Pricing</Link>
               <Link href="/changelog" className="hover:text-white">Changelog</Link>
               <Link href="/docs" className="hover:text-white">Docs</Link>
               <Link href="/support" className="text-gold hover:text-amber-200">Fund a founder</Link>
             </nav>
-            <div className="flex gap-3">
-              <Link href="/login" className="text-sm text-white/80 hover:text-white">Sign in</Link>
-              <Link href="/build" className="btn-primary text-sm py-2 px-4">Start free</Link>
-            </div>
+            <HeaderActions />
           </div>
         </header>
         <main className="flex-1">{children}</main>
