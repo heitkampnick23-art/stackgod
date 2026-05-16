@@ -11,7 +11,7 @@ export const mobile = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 mobile.post('/ios/ship', requireAuth, async (c) => {
   const user = c.get('user')!;
-  if (!PLANS[user.plan as Plan].ios_ship) {
+  if (!PLANS[user.plan as Plan].testflight) {
     return c.json({ error: 'plan_required', hint: 'TestFlight ship requires Pro or Studio', upgrade_url: `${c.env.APP_URL}/pricing` }, 402);
   }
   const { app_id } = await c.req.json<{ app_id: string }>();
@@ -34,7 +34,7 @@ mobile.post('/ios/ship', requireAuth, async (c) => {
 
 mobile.post('/android/ship', requireAuth, async (c) => {
   const user = c.get('user')!;
-  if (!PLANS[user.plan as Plan].android_ship) {
+  if (!PLANS[user.plan as Plan].app_store) {
     return c.json({ error: 'plan_required', hint: 'Play submit requires Studio', upgrade_url: `${c.env.APP_URL}/pricing` }, 402);
   }
   const { app_id } = await c.req.json<{ app_id: string }>();

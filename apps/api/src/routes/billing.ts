@@ -22,7 +22,8 @@ type Cycle = 'month' | 'year';
 
 billing.post('/checkout', requireAuth, async (c) => {
   const user = c.get('user')!;
-  const { plan, cycle = 'month' } = await c.req.json<{ plan: Exclude<Plan, 'free'>; cycle?: Cycle }>();
+  // Accept any string here so we can validate at runtime — clients lie about types.
+  const { plan, cycle = 'month' } = await c.req.json<{ plan: Plan; cycle?: Cycle }>();
   if (!PLANS[plan] || plan === 'free') return c.json({ error: 'invalid_plan' }, 400);
   if (cycle !== 'month' && cycle !== 'year') return c.json({ error: 'invalid_cycle' }, 400);
 

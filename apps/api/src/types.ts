@@ -6,7 +6,6 @@ export interface Env {
   SESSIONS: KVNamespace;
   APP_DATA: KVNamespace;
   APP_HOSTS: KVNamespace;
-  APP_HOSTS: KVNamespace;
   BUILD_QUEUE: Queue;
   APP_URL: string;
   API_URL: string;

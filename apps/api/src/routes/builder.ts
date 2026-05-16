@@ -52,7 +52,8 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
     im && typeof im.data === 'string' && im.data.length > 0 && ALLOWED_IMG_MIMES.has(im.mime)
   );
 
-  type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } };
+  type AllowedMime = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  type ContentBlock = { type: 'text'; text: string } | { type: 'image'; source: { type: 'base64'; media_type: AllowedMime; data: string } };
   type Msg = { role: 'user' | 'assistant'; content: string | ContentBlock[] };
 
   const messages: Msg[] = [];
@@ -66,10 +67,11 @@ builder.post('/chat', requireAuth, requireCredits, async (c) => {
   for (const m of history.results ?? []) messages.push({ role: m.role, content: m.content });
 
   // Final user turn — multipart if images attached, else plain string.
+  // ALLOWED_IMG_MIMES already filtered incomingImages to these 4 types.
   if (incomingImages.length > 0) {
     const blocks: ContentBlock[] = [];
     for (const img of incomingImages) {
-      blocks.push({ type: 'image', source: { type: 'base64', media_type: img.mime, data: img.data } });
+      blocks.push({ type: 'image', source: { type: 'base64', media_type: img.mime as AllowedMime, data: img.data } });
     }
     blocks.push({ type: 'text', text: body.message || 'Match this design.' });
     messages.push({ role: 'user', content: blocks });
@@ -276,6 +278,7 @@ builder.post('/fork', requireAuth, async (c) => {
       const ex = await c.env.DB.prepare(`SELECT slug FROM apps WHERE id=?`).bind(dup.forked_app_id).first<{ slug: string }>();
       if (ex) return c.json({ id: dup.forked_app_id, slug: ex.slug, url: `https://apps.stakgod.com/${ex.slug}/`, build_url: `${c.env.APP_URL}/build?app=${dup.forked_app_id}` });
     }
+    if (!source.stripe_connect_account_id) return c.json({ error: 'seller_disconnected' }, 409);
     const r = await fetch(`https://api.stripe.com/v1/checkout/sessions/${session_id}`, {
       headers: { authorization: `Bearer ${c.env.STRIPE_SECRET_KEY}`, 'stripe-account': source.stripe_connect_account_id },
     });

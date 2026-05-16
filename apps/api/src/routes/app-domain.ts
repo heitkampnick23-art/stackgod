@@ -21,7 +21,7 @@ interface Body { domain: string; }
 
 appDomain.post('/:id/domain', requireAuth, async (c) => {
   const user = c.get('user')!;
-  if (!PLANS[user.plan as Plan].custom_domain) {
+  if (!PLANS[user.plan as Plan].custom_domains) {
     return c.json({ error: 'plan_required', hint: 'Custom domains require Hobby or higher.', upgrade_url: `${c.env.APP_URL}/pricing` }, 402);
   }
   const id = c.req.param('id');
