@@ -1,8 +1,0 @@
-User-Agent: *
-Allow: /
-Disallow: /dashboard
-Disallow: /build
-Disallow: /login
-
-Host: https://stakgod.com
-Sitemap: https://stakgod.com/sitemap.xml
