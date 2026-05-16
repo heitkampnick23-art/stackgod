@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import HeaderActions from './_components/header-actions';
+import LaunchBanner from './_components/launch-banner';
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://stakgod.com'),
@@ -34,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="min-h-screen flex flex-col">
         <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-2 focus:bg-flame focus:text-white focus:rounded-full text-sm font-semibold">Skip to content</a>
+        <LaunchBanner />
         <header className="sticky top-0 z-50 backdrop-blur-xl backdrop-saturate-150 bg-ink/50 border-b border-white/10">
           <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
             <Link href="/" aria-label="Stakgod home" className="font-display text-xl tracking-wider"><span className="text-gold">STAK</span>GOD</Link>

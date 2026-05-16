@@ -7,6 +7,7 @@
 import type { MiddlewareHandler } from 'hono';
 import type { Env, Variables } from '../types';
 import { PLANS, type Plan } from '../lib/plans';
+import { isPanicActive } from '../routes/panic';
 
 // Hard ceiling on org-wide Anthropic spend per day. Tune via env in Workers Secrets.
 const DEFAULT_GLOBAL_BUDGET_USD = 50;
@@ -14,6 +15,15 @@ const DEFAULT_GLOBAL_BUDGET_USD = 50;
 export const requireCredits: MiddlewareHandler<{ Bindings: Env; Variables: Variables }> = async (c, next) => {
   const user = c.get('user');
   if (!user) return c.json({ error: 'unauthorized' }, 401);
+
+  // -1. Manual panic switch — admin can kill AI calls instantly via POST /admin/panic.
+  if (await isPanicActive(c.env)) {
+    return c.json({
+      error: 'service_paused',
+      message: 'Stakgod is briefly paused while we sort out an issue. Try again in a few minutes.',
+      retry_after_seconds: 300,
+    }, 503);
+  }
 
   // 0. Global circuit breaker — protects against abuse spikes during launches.
   const budget = Number(c.env.GLOBAL_DAILY_BUDGET_USD || DEFAULT_GLOBAL_BUDGET_USD);

@@ -8,6 +8,8 @@ import Link from 'next/link';
 export const runtime = 'edge';
 export const revalidate = 3600;
 
+const OG_PRESS = '/api/og?title=Press%20Kit&subtitle=Logos%2C%20screenshots%2C%20boilerplate%20%26%20founder%20bio&kind=press';
+
 export const metadata: Metadata = {
   title: 'Press kit — Stakgod',
   description: 'Logos, screenshots, founder bio, and boilerplate for journalists writing about Stakgod.',
@@ -15,7 +17,13 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Stakgod — press kit',
     description: 'Everything you need to write about Stakgod.',
-    images: ['/api/og?title=Press%20Kit&subtitle=Logos%2C%20screenshots%2C%20boilerplate%20%26%20founder%20bio&kind=press'],
+    images: [OG_PRESS],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Stakgod — press kit',
+    description: 'Everything you need to write about Stakgod.',
+    images: [OG_PRESS],
   },
 };
 

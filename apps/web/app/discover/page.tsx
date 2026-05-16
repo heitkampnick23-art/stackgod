@@ -10,6 +10,8 @@ const API = 'https://api.stakgod.com';
 export const runtime = 'edge';
 export const revalidate = 60;
 
+const OG_DISCOVER = '/api/og?title=Discover&subtitle=Apps%20people%20shipped%20by%20talking%20to%20Claude&kind=discover';
+
 export const metadata: Metadata = {
   title: 'Discover apps shipped on Stakgod',
   description: 'Real, working apps people built by talking to Claude. Click any to use it. Click Remix to make it your own — fork the entire app in one click.',
@@ -18,7 +20,13 @@ export const metadata: Metadata = {
     title: 'Discover apps shipped on Stakgod',
     description: 'Real apps people built in chat. Open + Remix any of them.',
     url: 'https://stakgod.com/discover',
-    images: ['/api/og?title=Discover&subtitle=Apps%20people%20shipped%20by%20talking%20to%20Claude&kind=discover'],
+    images: [OG_DISCOVER],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Discover apps shipped on Stakgod',
+    description: 'Real apps people built in chat. Open + Remix any of them.',
+    images: [OG_DISCOVER],
   },
 };
 

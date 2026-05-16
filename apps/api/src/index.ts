@@ -21,6 +21,7 @@ import { stats } from './routes/stats';
 import { changelog } from './routes/changelog';
 import { admin } from './routes/admin';
 import { digest } from './routes/digest';
+import { panic, logError } from './routes/panic';
 import { runWeeklyDigests } from './lib/run-digests';
 import { handleBuildBatch, type BuildMsg } from './queue/build-consumer';
 export { BuildRoom } from './do/build-room';
@@ -61,7 +62,19 @@ app.route('/tips', tips);
 app.route('/stats', stats);
 app.route('/changelog', changelog);
 app.route('/admin', admin);
+app.route('/admin', panic);
 app.route('/digest', digest);
+
+// Global error log → KV for live-tail at /admin/errors during launch.
+// Capped at 24h TTL so we don't fill KV with stale 500s.
+app.onError((err, c) => {
+  const path = c.req.path;
+  const msg = err instanceof Error ? err.message : String(err);
+  const stack = err instanceof Error ? err.stack?.slice(0, 1000) : undefined;
+  c.executionCtx.waitUntil(logError(c.env, { msg, path, status: 500, stack }));
+  console.error(`[${path}] ${msg}`, stack);
+  return c.json({ error: 'internal_error', request_id: crypto.randomUUID() }, 500);
+});
 
 export default {
   fetch: app.fetch,
