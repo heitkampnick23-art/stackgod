@@ -28,13 +28,17 @@ export { BuildRoom } from './do/build-room';
 
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
+// CORS: exact-match stakgod.com + any *.stakgod.com subdomain + local dev.
+// Previous .endsWith() check was a classic bypass (e.g. evil-stakgod.com matched).
+const CORS_ORIGIN_RE = /^https?:\/\/((.+\.)?stakgod\.com|localhost:3000|127\.0\.0\.1:3000)$/;
 app.use('*', async (c, next) => {
   const origin = c.req.header('origin') ?? '';
-  if (origin.endsWith('stakgod.com') || origin.endsWith('localhost:3000')) {
+  if (CORS_ORIGIN_RE.test(origin)) {
     c.header('access-control-allow-origin', origin);
     c.header('access-control-allow-credentials', 'true');
     c.header('access-control-allow-headers', 'content-type');
     c.header('access-control-allow-methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    c.header('vary', 'Origin');
   }
   if (c.req.method === 'OPTIONS') return c.body(null, 204);
   await next();
