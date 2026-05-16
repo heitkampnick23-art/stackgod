@@ -28,6 +28,7 @@ export interface Env {
   GH_REPO: string;              // e.g. "heitkampnick23-art/stackgod"
   BUILD_ROOM: DurableObjectNamespace;
   ADMIN_EMAILS?: string;        // comma-separated list of admin emails
+  GLOBAL_DAILY_BUDGET_USD?: string;  // org-wide circuit breaker on AI spend (default $50)
 }
 
 export interface User {

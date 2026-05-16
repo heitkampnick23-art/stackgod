@@ -58,6 +58,10 @@ dead_letter_queue = "stackgod-builds-dlq"
 [vars]
 APP_URL = "https://stakgod.com"
 API_URL = "https://api.stakgod.com"
+# Hard ceiling on total daily Anthropic spend across all users.
+# Trips the circuit breaker; new AI calls 503 until the next UTC day.
+# Override with `wrangler secret put GLOBAL_DAILY_BUDGET_USD` for higher.
+GLOBAL_DAILY_BUDGET_USD = "50"
 
 # Weekly builder digest — Monday noon ET (16:00 UTC).
 [triggers]
