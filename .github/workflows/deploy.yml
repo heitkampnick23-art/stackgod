@@ -1,9 +1,13 @@
 name: Deploy
-# Manual-only. Click 'Run workflow' in GitHub Actions to deploy from CI.
-# Day-to-day deploys happen from local via wrangler so this stays dormant.
-# To re-enable push-based auto-deploy, add `push: { branches: [main] }` here
-# AND set CLOUDFLARE_API_TOKEN as a repo secret with D1+Workers+Pages perms.
+# Auto-deploys on push to main. Uses npm + package-lock.json (no pnpm in repo).
+# Each job only runs if the relevant subtree changed, so doc-only pushes don't redeploy.
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'infra/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch:
 
 jobs:
@@ -11,32 +15,46 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9.12.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
-      - run: pnpm install --frozen-lockfile=false
+        with: { node-version: 20, cache: npm }
+      - run: npm install
       - name: Deploy Workers
         working-directory: apps/api
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 4d259cf98fff468b0108b6a80b7a10fc
-        run: pnpm exec wrangler deploy
+        run: npx wrangler deploy
+
+  deploy-apps-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm install
+      - name: Deploy apps-worker (serves user apps)
+        working-directory: apps/apps-worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 4d259cf98fff468b0108b6a80b7a10fc
+        run: npx wrangler deploy
 
   deploy-web:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with: { version: 9.12.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 20, cache: pnpm }
-      - run: pnpm install --frozen-lockfile=false
-      - name: Build + deploy Pages
+        with: { node-version: 20, cache: npm }
+      - run: npm install
+      - name: Build Next.js
+        working-directory: apps/web
+        run: npm run build
+      - name: Bundle for Pages
+        working-directory: apps/web
+        run: npx @cloudflare/next-on-pages@latest
+      - name: Deploy to Pages
         working-directory: apps/web
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 4d259cf98fff468b0108b6a80b7a10fc
-        run: |
-          npx @cloudflare/next-on-pages@latest
-          npx wrangler pages deploy .vercel/output/static --project-name=stackgod-web --branch=main
+        run: npx wrangler pages deploy .vercel/output/static --project-name=stackgod-web --branch=main --commit-dirty=true
