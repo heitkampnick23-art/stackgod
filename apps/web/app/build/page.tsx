@@ -22,6 +22,21 @@ function fileToBase64(f: File): Promise<string> {
   });
 }
 
+// Cosmetic stage labels that progress as Claude streams. Real value: makes
+// the wait feel like productive forward motion instead of an opaque "loading".
+// Brackets chosen so each stage shows for ~3-8s on a typical Sonnet 4.6 build.
+function streamStage(chars: number): string {
+  if (chars < 200)   return '🧠 Reading your idea…';
+  if (chars < 800)   return '📐 Sketching the layout…';
+  if (chars < 2200)  return '🎨 Choosing colors + typography…';
+  if (chars < 4500)  return '🧩 Wiring sg.auth · sg.db · sg.payments…';
+  if (chars < 7500)  return '✨ Polishing interactions…';
+  if (chars < 11000) return '📱 Optimizing for mobile…';
+  if (chars < 16000) return '🔌 Hooking up event handlers…';
+  if (chars < 22000) return '📦 Bundling everything together…';
+  return '🚀 Almost done — deploying…';
+}
+
 function BuildInner() {
   const params = useSearchParams();
   const initialAppId = params.get('app');
@@ -421,11 +436,12 @@ function BuildInner() {
             <pre className="absolute inset-0 overflow-auto p-4 text-xs leading-relaxed font-mono text-white/90 bg-[#0a0a0f]">{previewHtml || '// no code yet'}</pre>
           )}
 
-          {/* Streaming indicator */}
+          {/* Streaming indicator — cosmetic stage labels make the wait feel productive */}
           {streaming && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-flame/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-1.5 shadow-lg">
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-flame/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-1.5 shadow-lg max-w-[90%]">
               <span className="size-1.5 rounded-full bg-white animate-ping" />
-              Generating · {streamChars.toLocaleString()} chars
+              <span className="truncate">{streamStage(streamChars)}</span>
+              <span className="opacity-60 shrink-0">· {streamChars.toLocaleString()} chars</span>
             </div>
           )}
 
