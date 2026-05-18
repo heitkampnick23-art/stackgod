@@ -35,7 +35,7 @@ Need ideas? <a href="${env.APP_URL}/templates" style="color:#ff5b1f">Fork a temp
 </p>
 
 <p style="margin:32px 0 0;padding:16px;background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;color:#6ee7b7;font-size:14px">
-🎁 <strong>Launch promo:</strong> 14-day free trial on every paid plan. No card charged for 14 days.
+🔓 <strong>Open source MIT.</strong> Every line of code is on GitHub. Fork, audit, self-host — your call.
 </p>
 
 <p style="margin:24px 0 0;color:rgba(255,255,255,0.6);font-size:14px">
@@ -63,7 +63,7 @@ Reply to this email if you get stuck. I read every one.
 Need ideas? Fork a template: ${env.APP_URL}/templates
 Or browse Discover: ${env.APP_URL}/discover
 
-Launch promo: 14-day free trial on every paid plan. No card charged for 14 days.
+Open source MIT — github.com/heitkampnick23-art/stackgod
 
 Reply to this email if you get stuck.
 — Nick @ Stakgod

@@ -278,7 +278,7 @@ Pre-written copy for every channel, ready to paste. Replace `[demo gif/video URL
 
 - Ship one feature/week, tweet about it
 - `/changelog` page (already auto-built from git) — link in every tweet
-- Free Pro 14-day trial for first 100 signups via promo code
+- Comp Apple Developer fee ($99) for first 100 builders shipping public apps
 - Discord server, public roadmap
 - Direct DMs to early signups: "what would unblock you?"
 - Repeat the launch on Hacker News' "Ask HN" or "Tell HN" formats every 4-6 weeks (don't repeat Show HN)

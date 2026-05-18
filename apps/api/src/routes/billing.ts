@@ -41,9 +41,7 @@ billing.post('/checkout', requireAuth, async (c) => {
     success_url: `${c.env.APP_URL}/dashboard?upgraded=${plan}`,
     cancel_url: `${c.env.APP_URL}/pricing`,
     allow_promotion_codes: true,
-    // Launch promo: 14-day free trial on every paid plan. No prompt needed —
-    // Stripe still collects card details, just doesn't charge for 14 days.
-    subscription_data: { trial_period_days: 14 },
+    // No trial period — charge immediately on subscribe.
   });
   return c.json({ url: session.url });
 });

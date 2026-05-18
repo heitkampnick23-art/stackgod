@@ -63,7 +63,7 @@ The PH algorithm rewards reply *speed* and *thread depth* — aim for ≤5 min p
 
 > Brutal honest answer: AI inference costs *real money* and "free forever" platforms are racing each other to bankruptcy. 5 messages/day is enough to ship a small app and decide if you like the experience — but it forces an honest conversion conversation early.
 >
-> Math check: every Claude Sonnet 4.6 message that builds an app uses ~5-15k input tokens + ~3-8k output tokens = ~$0.02-$0.06 cost to us. At 5/day that's ~$0.10-$0.30/user/day in costs. If we gave 100 messages free, we'd hemorrhage cash. 14-day Pro trial is wide open today — that's our "try it for real" path.
+> Math check: every Claude Sonnet 4.6 message that builds an app uses ~5-15k input tokens + ~3-8k output tokens = ~$0.02-$0.06 cost to us. At 5/day that's ~$0.10-$0.30/user/day in costs. If we gave 100 messages free, we'd hemorrhage cash. No free trial — the bet is that pricing honesty wins long-term over generous-but-doomed-economics free tiers.
 
 ---
 
