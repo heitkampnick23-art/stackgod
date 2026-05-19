@@ -1,0 +1,66 @@
+{
+  "identifier" : "com.stakgod.ios.storekit",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "com.stakgod.ios.subs",
+      "localizations" : [],
+      "name" : "Stakgod Subscriptions",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "stakgod_plus_monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "200 AI messages per month + push notifications.",
+              "displayName" : "Stakgod+",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.stakgod.ios.plus",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Stakgod Plus (Monthly)",
+          "subscriptionGroupID" : "com.stakgod.ios.subs",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "24.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "stakgod_pro_monthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "1,000 AI messages per month + push + per-app analytics.",
+              "displayName" : "Stakgod Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.stakgod.ios.pro",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Stakgod Pro (Monthly)",
+          "subscriptionGroupID" : "com.stakgod.ios.subs",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

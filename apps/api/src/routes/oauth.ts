@@ -153,6 +153,40 @@ oauth.post('/apple/callback', async (c) => {
   });
 });
 
+// ---------- Apple Sign-In for iOS ----------
+// The iOS app gets a real Apple id_token via SignInWithAppleButton, then POSTs
+// it here. Same verify path as the web form_post callback, but returns JSON
+// with the session token (no cookie redirect — the iOS app stores it in
+// Keychain and sends it as a Cookie header on subsequent requests).
+oauth.post('/apple/ios', async (c) => {
+  const body = await c.req.json<{ id_token: string; name?: string | null }>().catch(() => ({} as { id_token?: string; name?: string }));
+  if (!body.id_token) return c.json({ error: 'missing_id_token' }, 400);
+  let claims: IdTokenClaims;
+  try {
+    claims = await verifyIdToken({
+      jwt: body.id_token,
+      jwksUrl: 'https://appleid.apple.com/auth/keys',
+      expectedIss: 'https://appleid.apple.com',
+      expectedAud: c.env.APPLE_CLIENT_ID,
+      kvCache: c.env.SESSIONS,
+    });
+  } catch (e) {
+    return c.json({ error: 'invalid_id_token', detail: String(e) }, 401);
+  }
+  if (!claims.email) return c.json({ error: 'no_email_in_token' }, 400);
+
+  const { sessionToken, isNew } = await upsertUserAndSession(c.env, {
+    email: claims.email,
+    name: body.name ?? null,
+    avatar_url: null,
+    apple_sub: claims.sub,
+  });
+  if (isNew) c.executionCtx.waitUntil(sendWelcomeEmail(c.env, claims.email, body.name ?? null));
+
+  const user = await c.env.DB.prepare(`SELECT plan FROM users WHERE email=?`).bind(claims.email).first<{ plan: string }>();
+  return c.json({ session: sessionToken, email: claims.email, plan: user?.plan ?? 'free' });
+});
+
 // ---------- helpers ----------
 
 // Open-redirect prevention: only allow same-origin paths starting with '/'.

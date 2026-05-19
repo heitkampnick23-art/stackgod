@@ -156,6 +156,37 @@ builder.get('/messages', requireAuth, async (c) => {
   return c.json({ messages: rows.results, deployed_url: `https://apps.stakgod.com/${app.slug}/` });
 });
 
+// Non-streaming chat wrapper for mobile clients (iOS/Android). Same auth +
+// credit gate as /chat but blocks on full completion instead of SSE.
+// Returns { reply: string }.
+builder.post('/chat-sync', requireAuth, requireCredits, async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req.json<{ message: string; app_id?: string }>().catch(() => ({ message: '' }));
+  const message = (body.message ?? '').trim().slice(0, 4000);
+  if (!message) return c.json({ error: 'empty_message' }, 400);
+
+  const client = new Anthropic({ apiKey: c.env.ANTHROPIC_API_KEY });
+  const resp = await client.messages.create({
+    model: pickModel({ intent: 'edit', promptChars: message.length, plan: user.plan }),
+    max_tokens: 1024,
+    system: 'You are Claude, helping a developer brainstorm and refine app ideas. Be concise: 2-4 sentences unless asked for more. Markdown OK.',
+    messages: [{ role: 'user', content: message }],
+  });
+
+  const reply = resp.content
+    .map((b) => (b.type === 'text' ? b.text : ''))
+    .join('\n').trim();
+
+  // Log usage so the credit gate stays consistent across web/iOS.
+  const cost = costUsd(resp.model as ModelId, resp.usage.input_tokens, resp.usage.output_tokens);
+  await c.env.DB.prepare(
+    `INSERT INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd)
+     VALUES (?, ?, 'ai_message', ?, ?, ?, ?)`
+  ).bind(crypto.randomUUID(), user.id, resp.model, resp.usage.input_tokens, resp.usage.output_tokens, cost).run();
+
+  return c.json({ reply });
+});
+
 // Manually deploy raw HTML.
 builder.post('/deploy', requireAuth, async (c) => {
   const user = c.get('user')!;

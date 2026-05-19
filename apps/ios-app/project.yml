@@ -1,0 +1,57 @@
+# xcodegen config — Stakgod iOS companion app
+# Build: cd apps/ios-app && xcodegen && open Stakgod.xcodeproj
+# iPhone only · iOS 17 minimum · matches founder's standing rules.
+
+name: Stakgod
+options:
+  bundleIdPrefix: com.stakgod
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""   # FILL ME — Nick's Apple Team ID from developer.apple.com → Membership
+    SWIFT_VERSION: "5.10"
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: "1"   # iPhone only — per founder rules
+
+targets:
+  Stakgod:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Stakgod
+        excludes:
+          - "**/.DS_Store"
+    resources:
+      - Stakgod/Stakgod.storekit
+    info:
+      path: Stakgod/Info.plist
+      properties:
+        CFBundleDisplayName: Stakgod
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        ITSAppUsesNonExemptEncryption: false
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false   # only stakgod.com over https
+        # Sign in with Apple capability
+        com.apple.developer.applesignin:
+          - Default
+    entitlements:
+      path: Stakgod/Stakgod.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
+        com.apple.developer.in-app-payments:
+          - merchant.com.stakgod
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.stakgod.ios
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"

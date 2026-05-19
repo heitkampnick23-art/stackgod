@@ -69,6 +69,37 @@ billing.post('/connect/onboard', requireAuth, async (c) => {
   return c.json({ url: link.url });
 });
 
+// ---------- Apple StoreKit verification (iOS app) ----------
+// iOS app sends the transaction it just completed; we record the
+// product → plan mapping so the user's plan tier reflects the subscription.
+// Note: full receipt validation should hit
+// https://api.storekit.itunes.apple.com/inApps/v1/transactions/{transactionId}
+// signed with the App Store Connect API key — wired post-launch via signed JWT.
+// For v1 we trust the on-device verification (StoreKit 2 .verified result)
+// and record the product_id + original_transaction_id for audit.
+billing.post('/apple/verify', requireAuth, async (c) => {
+  const user = c.get('user')!;
+  const body = await c.req.json<{ product_id: string; transaction_id: string; original_transaction_id: string }>().catch(() => null);
+  if (!body || !body.product_id) return c.json({ error: 'missing_fields' }, 400);
+
+  const plan = body.product_id === 'com.stakgod.ios.pro' ? 'pro'
+             : body.product_id === 'com.stakgod.ios.plus' ? 'hobby'
+             : null;
+  if (!plan) return c.json({ error: 'unknown_product' }, 400);
+
+  await c.env.DB.prepare(
+    `UPDATE users SET plan=?, updated_at=unixepoch() WHERE id=?`
+  ).bind(plan, user.id).run();
+
+  // Audit log so we can reconcile against Apple if a transaction is later refunded.
+  await c.env.DB.prepare(
+    `INSERT OR IGNORE INTO usage_events (id, user_id, kind, model, tokens_in, tokens_out, cost_usd)
+     VALUES (?, ?, 'apple_sub', ?, 0, 0, 0)`
+  ).bind(crypto.randomUUID(), user.id, `${body.product_id}|${body.original_transaction_id}`).run();
+
+  return c.json({ ok: true, plan });
+});
+
 billing.post('/webhook', async (c) => {
   const sig = c.req.header('stripe-signature');
   if (!sig) return c.text('missing sig', 400);
