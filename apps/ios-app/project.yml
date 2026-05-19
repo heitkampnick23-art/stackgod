@@ -11,7 +11,7 @@ options:
 
 settings:
   base:
-    DEVELOPMENT_TEAM: ""   # FILL ME — Nick's Apple Team ID from developer.apple.com → Membership
+    DEVELOPMENT_TEAM: "GY47UX52TR"   # Nick's Apple Team ID
     SWIFT_VERSION: "5.10"
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1"   # iPhone only — per founder rules
